@@ -1,152 +1,159 @@
 /**
- * Query q parameter — convert Solr q param to OpenSearch query DSL using lucene parser.
- *
- * Uses AST-based parsing for proper handling of:
- *   - Boolean operators (AND, OR, NOT)
- *   - Nested parentheses
- *   - Range queries
- *   - Phrase queries
- *   - Boosting
+ * Convert Solr q param to OpenSearch query DSL using lucene parser.
  */
 import * as lucene from 'lucene';
 import type { MicroTransform } from '../pipeline';
 import type { RequestContext, JavaMap } from '../context';
 
-type LuceneNode = {
-  field?: string;
-  term?: string;
-  term_min?: string;
-  term_max?: string;
-  inclusive_min?: boolean;
-  inclusive_max?: boolean;
-  quoted?: boolean;
-  boost?: number;
-  prefix?: string;
-  operator?: string;
-  left?: LuceneNode;
-  right?: LuceneNode;
-};
+/** Term node: field:value or field:"phrase" */
+interface TermNode {
+  field: string;
+  term: string;
+  quoted: boolean;
+  boost: number | null;
+}
+
+/** Range node: field:[min TO max] or field:{min TO max} */
+interface RangeNode {
+  field: string;
+  term_min: string;
+  term_max: string;
+  inclusive: 'both' | 'none' | 'left' | 'right';
+}
+
+/** Binary expression: left OP right */
+interface BinaryNode {
+  left: LuceneNode;
+  operator: 'AND' | 'OR' | 'NOT' | 'AND NOT' | '<implicit>';
+  right: LuceneNode;
+}
+
+/** Wrapper node: { left: node } with no operator */
+interface WrapperNode {
+  left: TermNode | RangeNode;
+}
+
+type LuceneNode = TermNode | RangeNode | BinaryNode | WrapperNode;
+
+function isRange(node: LuceneNode): node is RangeNode {
+  return 'term_min' in node;
+}
+
+function isBinary(node: LuceneNode): node is BinaryNode {
+  return 'operator' in node;
+}
+
+function isWrapper(node: LuceneNode): node is WrapperNode {
+  return 'left' in node && !('operator' in node);
+}
 
 function toMap(obj: object): JavaMap {
   const map = new Map();
   for (const [k, v] of Object.entries(obj)) {
-    map.set(k, v && typeof v === 'object' && !Array.isArray(v) ? toMap(v) : v);
+    map.set(k, Array.isArray(v) ? v : v && typeof v === 'object' ? toMap(v) : v);
   }
-  return map;
+  return map as unknown as JavaMap;
 }
 
-function astToOpenSearch(node: LuceneNode): JavaMap {
+function convertRange(node: RangeNode): object {
+  const range: Record<string, string> = {};
+  const gteOp = node.inclusive === 'both' || node.inclusive === 'left';
+  const lteOp = node.inclusive === 'both' || node.inclusive === 'right';
+  if (node.term_min !== '*') range[gteOp ? 'gte' : 'gt'] = node.term_min;
+  if (node.term_max !== '*') range[lteOp ? 'lte' : 'lt'] = node.term_max;
+  return { range: { [node.field]: range } };
+}
+
+function convertTerm(node: TermNode): { clause: object; prefix: string } {
+  let field = node.field;
+  let prefix = '';
+
+  // Lucene parser puts +/- prefix in field name
+  if (field.startsWith('+') || field.startsWith('-')) {
+    prefix = field[0];
+    field = field.slice(1);
+  }
+
   // Match all
-  if (node.field === '*' && node.term === '*') {
-    return toMap({ match_all: {} });
+  if (field === '*' && node.term === '*') {
+    return { clause: { match_all: {} }, prefix };
   }
 
-  // Range query: field:[a TO b] or field:{a TO b}
-  if (node.term_min !== undefined || node.term_max !== undefined) {
-    const range: Record<string, string | number> = {};
-    if (node.term_min !== undefined) {
-      range[node.inclusive_min ? 'gte' : 'gt'] = node.term_min;
-    }
-    if (node.term_max !== undefined) {
-      range[node.inclusive_max ? 'lte' : 'lt'] = node.term_max;
-    }
-    return toMap({ range: { [node.field || '_all']: range } });
+  // Phrase query
+  if (node.quoted) {
+    const clause = node.boost
+      ? { match_phrase: { [field]: { query: node.term, boost: node.boost } } }
+      : { match_phrase: { [field]: node.term } };
+    return { clause, prefix };
   }
 
-  // Phrase query: field:"hello world"
-  if (node.quoted && node.field && node.term) {
-    const q: Record<string, unknown> = { [node.field]: node.term };
-    if (node.boost) q.boost = node.boost;
-    return toMap({ match_phrase: q });
-  }
-
-  // Term query: field:value
-  if (node.field && node.term) {
-    const q: Record<string, unknown> = node.boost 
-      ? { value: node.term, boost: node.boost }
-      : node.term;
-    return toMap({ term: { [node.field]: q } });
-  }
-
-  // Boolean operators
-  if (node.operator) {
-    const left = node.left ? astToOpenSearch(node.left) : null;
-    const right = node.right ? astToOpenSearch(node.right) : null;
-
-    // Handle prefix operators (+, -)
-    const leftPrefix = node.left?.prefix;
-    const rightPrefix = node.right?.prefix;
-
-    if (node.operator === 'AND') {
-      const must: JavaMap[] = [];
-      if (left) must.push(left);
-      if (right) must.push(right);
-      return toMap({ bool: { must } });
-    }
-
-    if (node.operator === 'OR') {
-      const should: JavaMap[] = [];
-      if (left) should.push(left);
-      if (right) should.push(right);
-      return toMap({ bool: { should } });
-    }
-
-    if (node.operator === 'NOT') {
-      return toMap({
-        bool: {
-          must: left ? [left] : [],
-          must_not: right ? [right] : [],
-        },
-      });
-    }
-
-    // Implicit OR (default)
-    if (node.operator === '<implicit>') {
-      // Check for prefix operators
-      if (leftPrefix === '+' || rightPrefix === '+') {
-        const must: JavaMap[] = [];
-        const should: JavaMap[] = [];
-        if (left) (leftPrefix === '+' ? must : should).push(left);
-        if (right) (rightPrefix === '+' ? must : should).push(right);
-        return toMap({ bool: { must, should } });
-      }
-      if (leftPrefix === '-' || rightPrefix === '-') {
-        const must: JavaMap[] = [];
-        const must_not: JavaMap[] = [];
-        if (left) (leftPrefix === '-' ? must_not : must).push(left);
-        if (right) (rightPrefix === '-' ? must_not : must).push(right);
-        return toMap({ bool: { must, must_not } });
-      }
-      // Default: OR
-      const should: JavaMap[] = [];
-      if (left) should.push(left);
-      if (right) should.push(right);
-      return toMap({ bool: { should } });
-    }
-  }
-
-  // Fallback: pass through to query_string
-  return toMap({ query_string: { query: node.term || '*:*' } });
+  // Term query
+  const clause = node.boost
+    ? { term: { [field]: { value: node.term, boost: node.boost } } }
+    : { term: { [field]: node.term } };
+  return { clause, prefix };
 }
 
-function parseSolrQueryWithLucene(q: string): JavaMap {
-  if (!q || q === '*:*') {
-    return toMap({ match_all: {} });
+function convert(node: LuceneNode): object {
+  // Unwrap { left: ... } wrapper
+  if (isWrapper(node)) {
+    return convert(node.left);
   }
 
-  try {
-    const ast = lucene.parse(q);
-    return astToOpenSearch(ast as LuceneNode);
-  } catch {
-    // Fallback to query_string if parsing fails
-    return toMap({ query_string: { query: q } });
+  // Range query
+  if (isRange(node)) {
+    return convertRange(node);
   }
+
+  // Binary operator
+  if (isBinary(node)) {
+    const left = convert(node.left);
+    const right = convert(node.right);
+
+    switch (node.operator) {
+      case 'AND':
+        return { bool: { must: [left, right] } };
+      case 'OR':
+        return { bool: { should: [left, right] } };
+      case 'NOT':
+      case 'AND NOT':
+        return { bool: { must: [left], must_not: [right] } };
+      case '<implicit>': {
+        // Merge bool clauses from prefix operators (+/-)
+        const lBool = 'bool' in left ? (left as { bool: Record<string, object[]> }).bool : null;
+        const rBool = 'bool' in right ? (right as { bool: Record<string, object[]> }).bool : null;
+        if (lBool || rBool) {
+          return {
+            bool: {
+              must: [...(lBool?.must || []), ...(rBool?.must || [])],
+              must_not: [...(lBool?.must_not || []), ...(rBool?.must_not || [])],
+            },
+          };
+        }
+        return { bool: { should: [left, right] } };
+      }
+    }
+  }
+
+  // Term node with possible prefix
+  const { clause, prefix } = convertTerm(node as TermNode);
+  if (prefix === '+') return { bool: { must: [clause] } };
+  if (prefix === '-') return { bool: { must_not: [clause] } };
+  return clause;
 }
 
 export const request: MicroTransform<RequestContext> = {
   name: 'standard-query-parser',
   apply: (ctx) => {
     const q = ctx.params.get('q') || '*:*';
-    ctx.body.set('query', parseSolrQueryWithLucene(q));
+    if (!q || q === '*:*') {
+      ctx.body.set('query', toMap({ match_all: {} }));
+      return;
+    }
+    try {
+      ctx.body.set('query', toMap(convert(lucene.parse(q) as LuceneNode)));
+    } catch {
+      ctx.body.set('query', toMap({ query_string: { query: q } }));
+    }
   },
 };
