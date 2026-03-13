@@ -13,6 +13,7 @@ import * as selectUri from './features/select-uri';
 import * as queryQ from './features/query-q';
 import * as fieldList from './features/field-list';
 import * as jsonFacets from './features/json-facets';
+import * as standardQueryParser from './features/standard-query-parser';
 import * as hitsToDocs from './features/hits-to-docs';
 import * as aggsToFacets from './features/aggs-to-facets';
 import * as responseHeader from './features/response-header';
@@ -25,6 +26,8 @@ export const requestRegistry: TransformRegistry<RequestContext> = {
       queryQ.request, // q=... → query DSL
       jsonFacets.request, // json.facet → aggs,
       fieldList.request, // fl=... → _source
+      jsonFacets.request, // json.facet → aggs
+      standardQueryParser.request, // q=... → query DSL (AST-based lucene parser)
     ],
   },
 };
