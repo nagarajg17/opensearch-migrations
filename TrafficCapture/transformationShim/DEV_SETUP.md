@@ -23,6 +23,7 @@ docker-compose -f docker-compose.validation.yml up -d
 ```
 
 ### Running Services
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
 
 | Port | Service | Description |
 |------|---------|-------------|

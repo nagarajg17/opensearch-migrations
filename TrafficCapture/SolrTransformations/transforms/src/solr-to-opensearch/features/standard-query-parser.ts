@@ -144,7 +144,7 @@ function parseSolrQueryWithLucene(q: string): JavaMap {
 }
 
 export const request: MicroTransform<RequestContext> = {
-  name: 'query-q-lucene',
+  name: 'standard-query-parser',
   apply: (ctx) => {
     const q = ctx.params.get('q') || '*:*';
     ctx.body.set('query', parseSolrQueryWithLucene(q));
