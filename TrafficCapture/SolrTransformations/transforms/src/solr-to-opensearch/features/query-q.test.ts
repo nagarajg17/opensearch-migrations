@@ -1,14 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { request } from './standard-query-parser';
+import { request } from './query-q';
 import type { RequestContext, JavaMap } from '../context';
 
-function createMockContext(q: string): RequestContext {
-  const params = new URLSearchParams();
-  params.set('q', q);
+function createMockContext(params: Record<string, string>): RequestContext {
+  const urlParams = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    urlParams.set(k, v);
+  }
   return {
     endpoint: 'select',
     collection: 'test',
-    params,
+    params: urlParams,
     body: new Map() as unknown as JavaMap,
     msg: new Map() as unknown as JavaMap,
   };
@@ -30,12 +32,23 @@ function mapToObject(map: JavaMap): unknown {
 }
 
 function applyAndGetQuery(q: string): unknown {
-  const ctx = createMockContext(q);
+  const ctx = createMockContext({ q });
   request.apply(ctx);
   return mapToObject(ctx.body.get('query') as JavaMap);
 }
 
-describe('standard-query-parser', () => {
+function applyAndGetBody(params: Record<string, string>): Record<string, unknown> {
+  const ctx = createMockContext(params);
+  request.apply(ctx);
+  const result: Record<string, unknown> = {};
+  for (const [k, v] of (ctx.body as unknown as Map<string, unknown>).entries()) {
+    result[k] = v instanceof Map ? mapToObject(v as JavaMap) : v;
+  }
+  return result;
+}
+
+describe('query-q', () => {
+  // Query parsing tests
   it('match_all for *:*', () => {
     expect(applyAndGetQuery('*:*')).toEqual({ match_all: {} });
   });
@@ -129,5 +142,22 @@ describe('standard-query-parser', () => {
         must_not: [{ query_string: { query: 'bar' } }],
       },
     });
+  });
+
+  // Pagination tests (rows/start)
+  it('rows param converts to size', () => {
+    const body = applyAndGetBody({ q: '*:*', rows: '25' });
+    expect(body.size).toBe(25);
+  });
+
+  it('start param converts to from', () => {
+    const body = applyAndGetBody({ q: '*:*', start: '10' });
+    expect(body.from).toBe(10);
+  });
+
+  it('rows and start together', () => {
+    const body = applyAndGetBody({ q: '*:*', rows: '50', start: '100' });
+    expect(body.size).toBe(50);
+    expect(body.from).toBe(100);
   });
 });

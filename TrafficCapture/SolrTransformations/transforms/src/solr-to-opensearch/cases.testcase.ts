@@ -331,4 +331,26 @@ export const testCases: TestCase[] = [
       },
     },
   }),
+
+  solrTest('query-boost', {
+    description: 'Boosted term query to influence relevance scoring',
+    documents: [
+      { id: '1', title: 'laptop computer', category: 'electronics' },
+      { id: '2', title: 'laptop bag', category: 'accessories' },
+      { id: '3', title: 'computer desk', category: 'furniture' },
+    ],
+    requestPath: '/solr/testcollection/select?q=' + encodeURIComponent('title:laptop^2 OR title:computer') + '&wt=json',
+    solrSchema: {
+      fields: {
+        title: { type: 'text_general' },
+        category: { type: 'text_general' },
+      },
+    },
+    opensearchMapping: {
+      properties: {
+        title: { type: 'text' },
+        category: { type: 'text' },
+      },
+    },
+  }),
 ];
