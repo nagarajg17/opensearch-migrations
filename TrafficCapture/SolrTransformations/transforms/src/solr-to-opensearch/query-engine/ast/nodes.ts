@@ -31,11 +31,16 @@ export interface BoolNode {
  * Field-value query node — a `field:value` expression in Solr syntax.
  *
  * Example: `title:java` → field="title", value="java"
+ *
+ * For bare values like `java` (no field prefix), the parser sets
+ * `defaultField: true` and the transformer uses `query_string` instead of `term`.
  */
 export interface FieldNode {
   type: 'field';
   field: string;
   value: string;
+  /** True when the field was not explicitly specified (bare value like `java`). */
+  defaultField?: boolean;
 }
 
 /**
@@ -44,6 +49,9 @@ export interface FieldNode {
  * Examples:
  *   `title:"hello world"` → text="hello world", field="title"
  *   `"hello world"` with df="content" → text="hello world", field="content"
+ *
+ * For bare phrases like `"hello world"` (no field prefix), the parser sets
+ * `defaultField: true` and the transformer uses `query_string` instead of `match_phrase`.
  */
 export interface PhraseNode {
   type: 'phrase';
@@ -54,6 +62,8 @@ export interface PhraseNode {
    * or the default field (df) for bare phrases like `"hello world"`.
    */
   field: string;
+  /** True when the field was not explicitly specified (bare phrase like `"hello world"`). */
+  defaultField?: boolean;
 }
 
 /**

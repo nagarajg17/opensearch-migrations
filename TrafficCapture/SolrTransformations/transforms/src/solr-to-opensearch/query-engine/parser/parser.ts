@@ -127,6 +127,11 @@ function resolveDefaultFields(node: ASTNode, df: string): void {
   switch (node.type) {
     case 'field':
     case 'phrase':
+      if (node.field === '') {
+        node.field = df;
+        node.defaultField = true;  // Mark as default field for transformer
+      }
+      break;
     case 'range':
       if (node.field === '') node.field = df;
       break;
