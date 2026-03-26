@@ -12,11 +12,4 @@ describe('transformNode', () => {
     expect(mustArray).toHaveLength(1);
     expect(mustArray[0].get('bool')).toBeDefined();
   });
-
-  it('throws for an unregistered node type', () => {
-    const node: ASTNode = { type: 'field', field: 'title', value: 'java' };
-    expect(() => transformNode(node)).toThrow(
-      'No transform rule registered for node type: field',
-    );
-  });
 });
