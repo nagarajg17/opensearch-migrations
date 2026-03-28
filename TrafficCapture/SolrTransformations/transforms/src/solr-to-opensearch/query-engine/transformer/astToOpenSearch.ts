@@ -39,6 +39,7 @@ import type { ASTNode } from '../ast/nodes';
 import type { TransformRuleFn } from './types';
 import { bareQueryRule } from './rules/bareQueryRule';
 import { boolRule } from './rules/boolRule';
+import { boostRule } from './rules/boostRule';
 import { fieldRule } from './rules/fieldRule';
 import { groupRule } from './rules/groupRule';
 import { matchAllRule } from './rules/matchAllRule';
@@ -56,6 +57,7 @@ const rules: Record<string, TransformRuleFn> = {
   // TODO: register remaining rules as they are implemented
   bareQuery: bareQueryRule,
   bool: boolRule,
+  boost: boostRule,
   field: fieldRule,
   group: groupRule,
   matchAll: matchAllRule,
