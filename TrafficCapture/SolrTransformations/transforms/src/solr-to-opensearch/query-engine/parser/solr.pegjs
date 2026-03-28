@@ -200,16 +200,18 @@ rangeVal
 // Unquoted value characters: letters, digits, and common special chars.
 // Determines what can appear in unquoted field values.
 // Includes ~ to parse fuzzy syntax (roam~, roam~1) so we can throw a clear error.
-// Note: + and - are NOT included as they are prefix operators (+term, -term).
+// Note: + and - are special characters (prefix operators) and must be escaped
+// if used literally in values. They are NOT included here.
 valueChars
-  = $[a-zA-Z0-9._\-*#$@?/~]+
+  = $[a-zA-Z0-9._*#$@?/~]+
 
 // Field name identifier: starts with a letter or underscore, followed by
-// value characters. More restrictive first character prevents numbers from
-// being parsed as field names (e.g., `123` is a value, not a field).
-// Note: + is NOT included as it's a prefix operator.
+// alphanumeric and common special chars. More restrictive first character
+// prevents numbers from being parsed as field names (e.g., `123` is a value).
+// Note: + and - are special characters (prefix operators) and must be escaped
+// if used literally in field names. They are NOT included here.
 identifier
-  = $([a-zA-Z_][a-zA-Z0-9._\-*#$@?/]*)
+  = $([a-zA-Z_][a-zA-Z0-9._*#$@?/]*)
 
 // BoostNode modifier: ^N where N is a number (integer or decimal).
 // `title:java^2` → BoostNode { child: FieldNode, value: 2 }
