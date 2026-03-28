@@ -284,6 +284,159 @@ describe('parseSolrQuery', () => {
         not: [],
       });
     });
+
+    // ─── Alternative boolean operators ─────────────────────────────────────
+
+    it('parses && as AND', () => {
+      const { ast, errors } = parseSolrQuery('title:java && author:smith', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [
+          { type: 'field', field: 'title', value: 'java' },
+          { type: 'field', field: 'author', value: 'smith' },
+        ],
+        or: [],
+        not: [],
+      });
+    });
+
+    it('parses || as OR', () => {
+      const { ast, errors } = parseSolrQuery('title:java || title:python', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [],
+        or: [
+          { type: 'field', field: 'title', value: 'java' },
+          { type: 'field', field: 'title', value: 'python' },
+        ],
+        not: [],
+      });
+    });
+
+    it('parses ! as NOT', () => {
+      const { ast, errors } = parseSolrQuery('!status:draft', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [],
+        or: [],
+        not: [{ type: 'field', field: 'status', value: 'draft' }],
+      });
+    });
+
+    it('parses ! without whitespace', () => {
+      const { ast, errors } = parseSolrQuery('title:java && !status:draft', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [
+          { type: 'field', field: 'title', value: 'java' },
+          { type: 'bool', and: [], or: [], not: [{ type: 'field', field: 'status', value: 'draft' }] },
+        ],
+        or: [],
+        not: [],
+      });
+    });
+
+    // ─── Prefix operators (+/-) ────────────────────────────────────────────
+
+    it('parses +term as required (must)', () => {
+      const { ast, errors } = parseSolrQuery('+title:java', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [{ type: 'field', field: 'title', value: 'java' }],
+        or: [],
+        not: [],
+      });
+    });
+
+    it('parses -term as prohibited (must_not)', () => {
+      const { ast, errors } = parseSolrQuery('-status:draft', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [],
+        or: [],
+        not: [{ type: 'field', field: 'status', value: 'draft' }],
+      });
+    });
+
+    it('parses mixed + and - prefixes', () => {
+      const { ast, errors } = parseSolrQuery('+title:java -status:draft', emptyParams);
+      expect(errors).toEqual([]);
+      // Two adjacent terms → implicit OR
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [],
+        or: [
+          { type: 'bool', and: [{ type: 'field', field: 'title', value: 'java' }], or: [], not: [] },
+          { type: 'bool', and: [], or: [], not: [{ type: 'field', field: 'status', value: 'draft' }] },
+        ],
+        not: [],
+      });
+    });
+
+    it('parses + and - with groups', () => {
+      const { ast, errors } = parseSolrQuery('+(title:java OR title:python)', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [{
+          type: 'group',
+          child: {
+            type: 'bool',
+            and: [],
+            or: [
+              { type: 'field', field: 'title', value: 'java' },
+              { type: 'field', field: 'title', value: 'python' },
+            ],
+            not: [],
+          },
+        }],
+        or: [],
+        not: [],
+      });
+    });
+
+    it('parses +bareterm (required bare term)', () => {
+      const { ast, errors } = parseSolrQuery('+jakarta', paramsWithDf('content'));
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [{ type: 'bareQuery', query: 'jakarta', isPhrase: false, defaultField: 'content' }],
+        or: [],
+        not: [],
+      });
+    });
+
+    it('parses +jakarta lucene (required + optional bare terms)', () => {
+      const { ast, errors } = parseSolrQuery('+jakarta lucene', paramsWithDf('content'));
+      expect(errors).toEqual([]);
+      // +jakarta is required, lucene is optional (implicit OR)
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [],
+        or: [
+          { type: 'bool', and: [{ type: 'bareQuery', query: 'jakarta', isPhrase: false, defaultField: 'content' }], or: [], not: [] },
+          { type: 'bareQuery', query: 'lucene', isPhrase: false, defaultField: 'content' },
+        ],
+        not: [],
+      });
+    });
+
+    it('parses -bareterm (prohibited bare term)', () => {
+      const { ast, errors } = parseSolrQuery('-draft', paramsWithDf('status'));
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'bool',
+        and: [],
+        or: [],
+        not: [{ type: 'bareQuery', query: 'draft', isPhrase: false, defaultField: 'status' }],
+      });
+    });
   });
 
   // ─── GroupNode ───────────────────────────────────────────────────────────
