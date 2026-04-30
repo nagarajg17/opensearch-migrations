@@ -18,10 +18,20 @@ const solrConfig = (typeof bindings !== 'undefined' && bindings?.solrConfig) //N
   ? bindings.solrConfig
   : undefined;
 
+// Read fieldTypes from bindings once at init. Java provides a flat map of
+// fieldName → solrTypeClass (e.g. {"title":"solr.TextField","id":"solr.StrField"})
+// resolved from managed-schema.xml via solrSchemaXmlFile config.
+// Empty map when solrSchemaXmlFile is not configured — fieldRule falls back to match.
+const fieldTypes: ReadonlyMap<string, string> =
+  (typeof bindings !== 'undefined' && bindings?.fieldTypes) //NOSONAR — typeof required for undeclared closure var
+    ? new Map(Object.entries(bindings.fieldTypes as Record<string, string>))
+    : new Map();
+
 export function transform(msg: JavaMap): JavaMap {
   const ctx = buildRequestContext(msg);
   if (ctx.endpoint === 'unknown') return msg;
   ctx.solrConfig = solrConfig;
+  ctx.fieldTypes = fieldTypes;
   runPipeline(requestRegistry, ctx);
   if (ctx.body.size > 0) {
     let payload = msg.get('payload');
