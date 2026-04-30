@@ -5,22 +5,32 @@
  *   - field:* (existence) → exists query
  *   - field:roam~ / field:roam~2 (fuzzy) → fuzzy query
  *   - field:te?t / field:test* (wildcard) → wildcard query
- *   - field:value (plain) → match query
+ *   - field:value (plain, text field) → match query
+ *   - field:value (plain, any other type or unknown) → term query
  *
- * We use `match` for plain values because Solr's standard query parser
- * analyzes field values at query time, matching OpenSearch's match behavior.
+ * For plain values, the query type depends on the field's OpenSearch type from
+ * the schema (passed via fieldTypes):
+ *   - `text` → match query (analyzed, full-text search)
+ *   - anything else (keyword, integer, date, boolean, etc.) → term query (exact match)
+ *   - unknown (field not in fieldTypes) → match query (safe default — avoids breaking
+ *     text fields that weren't listed in the schema)
+ 
  *
  * All output uses the expanded form with nested field object to support
  * boost injection by boostRule:
  *   {"queryType": {"field": {"param": "value"}}}
  *
- * Examples:
+ * Examples (text field or unknown):
  *   `title:java`   → Map{"match" → Map{"title" → Map{"query" → "java"}}}
  *   `title:*`      → Map{"exists" → Map{"field" → "title"}}
  *   `title:te?t`   → Map{"wildcard" → Map{"title" → Map{"value" → "te?t"}}}
  *   `title:test*`  → Map{"wildcard" → Map{"title" → Map{"value" → "test*"}}}
  *   `title:roam~`  → Map{"fuzzy" → Map{"title" → Map{"value" → "roam"}}}
  *   `title:roam~2` → Map{"fuzzy" → Map{"title" → Map{"value" → "roam", "fuzziness" → 2}}}
+ *
+ * Examples (with schema, non-text field):
+ *   `status:active` (status=keyword) → Map{"term" → Map{"status" → "active"}}
+ *   `id:42`         (id=keyword)     → Map{"term" → Map{"id" → "42"}}
  */
 
 import type { ASTNode } from '../../ast/nodes';
@@ -32,9 +42,30 @@ const WILDCARD_PATTERN = /[*?]/;
 /** Detects fuzzy search: term~ or term~N at end of value */
 const FUZZY_PATTERN = /^(.+?)~(\d?)$/;
 
+/**
+ * Classify a Solr field as analyzed text or exact based on its fieldType Java class.
+ *
+ * A field is analyzed (text) if its fieldType class contains "TextField"
+ * (e.g. solr.TextField, org.apache.solr.schema.TextField, custom subclasses).
+ * Everything else is exact — regardless of the type name.
+ *
+ * Using the class rather than the type name avoids false positives from
+ * misleadingly-named types (e.g. a type named "text_acs" backed by IntPointField
+ * is exact, not analyzed).
+ */
+function isTextField(fieldTypeClass: string): boolean {
+  return fieldTypeClass.includes('TextField');
+}
+
+/**
+ * TransformRuleFn for FieldNode. Uses the optional `fieldTypes` parameter
+ * (field name → Solr fieldType class) to choose term vs match for plain values.
+ * Falls back to match when fieldTypes is absent or the field is not listed.
+ */
 export const fieldRule: TransformRuleFn = (
   node: ASTNode,
   _transformChild,
+  fieldTypes = new Map<string, string>(),
 ): Map<string, any> => {
   const { field, value } = node;
 
@@ -64,6 +95,19 @@ export const fieldRule: TransformRuleFn = (
     return new Map([['wildcard', new Map([[field, new Map([['value', value]])]])]]);
   }
 
-  // Plain value: field:value → match query (expanded form for boost compatibility)
+  // Plain value — choose query type based on field's Solr fieldType class.
+  //
+  // class.includes("TextField") → analyzed → match query.
+  // Everything else (solr.StrField, solr.IntPointField, etc.) → exact → term query.
+  // Unknown fields (not in fieldTypes) fall back to match: safer than term because
+  // a match query on an exact field degrades gracefully, whereas a term query on
+  // a text field misses analyzed tokens (e.g. won't find "java" if stored as "Java").
+  const fieldTypeClass = fieldTypes.get(field);
+  if (fieldTypeClass !== undefined && !isTextField(fieldTypeClass)) {
+    // Known non-text field: term query — exact match, no analysis.
+    return new Map([['term', new Map([[field, value]])]]);
+  }
+
+  // text field or unknown type: match query (expanded form for boost compatibility).
   return new Map([['match', new Map([[field, new Map([['query', value]])]])]]);
 };
