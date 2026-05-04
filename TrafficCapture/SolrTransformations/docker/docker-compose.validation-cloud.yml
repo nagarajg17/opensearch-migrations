@@ -1,0 +1,184 @@
+# Validation Shim multi-mode demo — Solr Cloud variant.
+# Same as docker-compose.validation.yml but uses Solr Cloud (ZooKeeper + Solr)
+# instead of standalone Solr, for manual testing against a Cloud topology.
+#
+# Usage:
+#   docker-compose -f docker-compose.validation-cloud.yml up -d
+#
+# Ports:
+#   2181 — ZooKeeper
+#   8983 — Solr Cloud node
+#   9200 — OpenSearch
+#   8081 — shim-solr-only passthrough
+#   8082 — shim-opensearch-only (with request/response transforms)
+#   8083 — shim-solr-primary (dual-target, Solr primary)
+#   8084 — shim-opensearch-primary (dual-target, OpenSearch primary)
+#
+# After startup, create a collection:
+#   curl "http://localhost:8983/solr/admin/collections?action=CREATE&name=products&numShards=1&replicationFactor=1&collection.configName=_default"
+#
+# Then seed data and run queries the same way as the standalone setup.
+
+x-shim-base: &shim-base
+  image: migrations/transformation_shim
+  entrypoint: ["java", "-cp", "/app/resources:/app/classes:/app/libs/*",
+    "org.opensearch.migrations.transform.shim.ShimMain"]
+  volumes:
+    - transform-dist:/transforms:ro
+  depends_on:
+    opensearch:
+      condition: service_healthy
+    solr:
+      condition: service_healthy
+    transform-watcher:
+      condition: service_started
+
+services:
+  zookeeper:
+    image: mirror.gcr.io/library/zookeeper:3.8
+    ports:
+      - "2181:2181"
+    environment:
+      - ZOO_MY_ID=1
+      - ZOO_SERVERS=server.1=zookeeper:2888:3888;2181
+      - ZOO_4LW_COMMANDS_WHITELIST=ruok,srvr
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  solr:
+    image: mirror.gcr.io/library/solr:8
+    ports:
+      - "8983:8983"
+    environment:
+      - ZK_HOST=zookeeper:2181
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    # -c flag enables SolrCloud mode
+    command: solr-foreground -c
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8983/solr/admin/info/system || exit 1"]
+      interval: 5s
+      timeout: 10s
+      retries: 40
+      start_period: 20s
+
+  opensearch:
+    image: mirror.gcr.io/opensearchproject/opensearch:3.3.0
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin_1234!
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  transform-watcher:
+    image: node:20-slim
+    working_dir: /transforms
+    volumes:
+      - ../transforms/src:/transforms/src:ro
+      - ../transforms/build.mjs:/transforms/build.mjs:ro
+      - ../transforms/package.json:/transforms/package.json:ro
+      - ../transforms/tsconfig.json:/transforms/tsconfig.json:ro
+      - transform-dist:/transforms/dist
+    command: ["sh", "-c", "npm install && npm run build && npm run watch"]
+
+  # Mode 1: Solr-only passthrough — no transforms, just proxies to Solr Cloud
+  shim-solr-only:
+    <<: *shim-base
+    ports:
+      - "8081:8080"
+    command:
+      - --listenPort
+      - "8080"
+      - --target
+      - solr=http://solr:8983
+      - --primary
+      - solr
+
+  # Mode 2: OpenSearch-only — applies request/response transforms
+  shim-opensearch-only:
+    <<: *shim-base
+    ports:
+      - "8082:8080"
+    command:
+      - --listenPort
+      - "8080"
+      - --target
+      - opensearch=http://opensearch:9200
+      - --primary
+      - opensearch
+      - --transformTarget
+      - opensearch
+      - --transformerConfig
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-request.js","bindingsObject":"{}"}}]'
+      - --responseTransformerConfig
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}"}}]'
+      - --watchTransforms
+
+  # Mode 3: Dual-target, Solr Cloud primary — returns Solr response, validates against OpenSearch
+  shim-solr-primary:
+    <<: *shim-base
+    ports:
+      - "8083:8080"
+    command:
+      - --listenPort
+      - "8080"
+      - --target
+      - solr=http://solr:8983
+      - --target
+      - opensearch=http://opensearch:9200
+      - --transformerConfig
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-request.js","bindingsObject":"{}"}}]'
+      - --responseTransformerConfig
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}"}}]'
+      - --transformTarget
+      - opensearch
+      - --primary
+      - solr
+      - --validator
+      - field-equality:solr,opensearch:ignore=responseHeader.QTime,responseHeader.params.NOW
+      - --validator
+      - doc-count:solr,opensearch:assert=solr==opensearch
+      - --timeout
+      - "5000"
+      - --watchTransforms
+
+  # Mode 4: Dual-target, OpenSearch primary — returns OpenSearch response, validates against Solr Cloud
+  shim-opensearch-primary:
+    <<: *shim-base
+    ports:
+      - "8084:8080"
+    command:
+      - --listenPort
+      - "8080"
+      - --target
+      - solr=http://solr:8983
+      - --target
+      - opensearch=http://opensearch:9200
+      - --transformerConfig
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-request.js","bindingsObject":"{}"}}]'
+      - --responseTransformerConfig
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}"}}]'
+      - --transformTarget
+      - opensearch
+      - --primary
+      - opensearch
+      - --validator
+      - field-equality:solr,opensearch:ignore=responseHeader.QTime,responseHeader.params.NOW
+      - --validator
+      - doc-count:solr,opensearch:assert=solr==opensearch
+      - --timeout
+      - "5000"
+      - --watchTransforms
+
+volumes:
+  transform-dist:
