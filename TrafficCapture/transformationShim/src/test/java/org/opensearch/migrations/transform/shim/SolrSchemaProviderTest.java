@@ -2,12 +2,15 @@ package org.opensearch.migrations.transform.shim;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SolrSchemaProviderTest {
@@ -15,7 +18,7 @@ class SolrSchemaProviderTest {
     @TempDir
     Path tempDir;
 
-    // ─── Basic field resolution ───────────────────────────────────────────────
+    // ─── Basic field resolution — class ──────────────────────────────────────
 
     @Test
     void resolvesWellKnownTextFieldToTextFieldClass() throws Exception {
@@ -26,7 +29,7 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("solr.TextField", result.get("title"));
+        assertEquals("solr.TextField", result.get("title").get("class"));
     }
 
     @Test
@@ -38,7 +41,7 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("solr.StrField", result.get("id"));
+        assertEquals("solr.StrField", result.get("id").get("class"));
     }
 
     @Test
@@ -50,7 +53,7 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("solr.IntPointField", result.get("price"));
+        assertEquals("solr.IntPointField", result.get("price").get("class"));
     }
 
     @Test
@@ -62,14 +65,66 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("solr.DatePointField", result.get("created"));
+        assertEquals("solr.DatePointField", result.get("created").get("class"));
+    }
+
+    // ─── multiValued attribute ────────────────────────────────────────────────
+
+    @Test
+    void defaultsMultiValuedToFalseWhenNotSpecified() throws Exception {
+        var xml = schemaXml(
+            "<fieldType name='string' class='solr.StrField'/>",
+            "<field name='id' type='string'/>"
+        );
+
+        var result = SolrSchemaProvider.fromXmlFile(xml);
+
+        assertEquals("false", result.get("id").get("multiValued"));
+    }
+
+    @Test
+    void preservesMultiValuedTrueWhenSpecified() throws Exception {
+        var xml = schemaXml(
+            "<fieldType name='string' class='solr.StrField'/>",
+            "<field name='tags' type='string' multiValued='true'/>"
+        );
+
+        var result = SolrSchemaProvider.fromXmlFile(xml);
+
+        assertEquals("true", result.get("tags").get("multiValued"));
+    }
+
+    @Test
+    void preservesMultiValuedFalseWhenExplicitlySet() throws Exception {
+        var xml = schemaXml(
+            "<fieldType name='string' class='solr.StrField'/>",
+            "<field name='status' type='string' multiValued='false'/>"
+        );
+
+        var result = SolrSchemaProvider.fromXmlFile(xml);
+
+        assertEquals("false", result.get("status").get("multiValued"));
+    }
+
+    @Test
+    void innerMapContainsBothClassAndMultiValued() throws Exception {
+        var xml = schemaXml(
+            "<fieldType name='text_general' class='solr.TextField'/>",
+            "<field name='title' type='text_general' multiValued='true'/>"
+        );
+
+        var result = SolrSchemaProvider.fromXmlFile(xml);
+
+        var meta = result.get("title");
+        assertNotNull(meta);
+        assertEquals("solr.TextField", meta.get("class"));
+        assertEquals("true",           meta.get("multiValued"));
     }
 
     // ─── Custom fieldType resolution ──────────────────────────────────────────
 
     @Test
     void resolvesCustomTextTypeViaClass() throws Exception {
-        // Custom type name that doesn't contain "text" — class is the ground truth
         var xml = schemaXml(
             "<fieldType name='my_custom_text' class='solr.TextField'/>",
             "<field name='description' type='my_custom_text'/>"
@@ -77,7 +132,7 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("solr.TextField", result.get("description"));
+        assertEquals("solr.TextField", result.get("description").get("class"));
     }
 
     @Test
@@ -90,7 +145,7 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("solr.IntPointField", result.get("score"));
+        assertEquals("solr.IntPointField", result.get("score").get("class"));
     }
 
     @Test
@@ -102,7 +157,7 @@ class SolrSchemaProviderTest {
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        assertEquals("org.apache.solr.schema.TextField", result.get("body"));
+        assertEquals("org.apache.solr.schema.TextField", result.get("body").get("class"));
     }
 
     // ─── Multiple fields ──────────────────────────────────────────────────────
@@ -114,24 +169,25 @@ class SolrSchemaProviderTest {
             "<fieldType name='text_general' class='solr.TextField'/>",
             "<fieldType name='pint'         class='solr.IntPointField'/>",
             "<field name='id'       type='string'/>",
-            "<field name='title'    type='text_general'/>",
+            "<field name='title'    type='text_general' multiValued='true'/>",
             "<field name='quantity' type='pint'/>"
         );
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
         assertEquals(3, result.size());
-        assertEquals("solr.StrField",      result.get("id"));
-        assertEquals("solr.TextField",     result.get("title"));
-        assertEquals("solr.IntPointField", result.get("quantity"));
+        assertEquals("solr.StrField",      result.get("id").get("class"));
+        assertEquals("false",              result.get("id").get("multiValued"));
+        assertEquals("solr.TextField",     result.get("title").get("class"));
+        assertEquals("true",               result.get("title").get("multiValued"));
+        assertEquals("solr.IntPointField", result.get("quantity").get("class"));
+        assertEquals("false",              result.get("quantity").get("multiValued"));
     }
 
     // ─── Empty class attribute ────────────────────────────────────────────────
 
     @Test
     void skipsFieldWhenFieldTypeHasNoClass() throws Exception {
-        // fieldType with no class attribute — field is skipped since we can't classify it.
-        // Falls back to match query in the JS transformer (safe default).
         var xml = schemaXml(
             "<fieldType name='mystery'/>",
             "<field name='x' type='mystery'/>"
@@ -144,16 +200,12 @@ class SolrSchemaProviderTest {
 
     @Test
     void skipsFieldWhenFieldTypeNotFoundInSchema() throws Exception {
-        // Field references a type not declared in <fieldType> elements — skipped entirely.
-        // The JS transformer treats absent fields as unknown and falls back to match query,
-        // which is safer than storing "" which would incorrectly trigger term query.
         var xml = schemaXml(
             "<field name='x' type='undeclared_type'/>"
         );
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
-        // Field is absent — not stored with empty class
         assertFalse(result.containsKey("x"));
     }
 
@@ -184,8 +236,8 @@ class SolrSchemaProviderTest {
     void skipsFieldsWithEmptyNameOrType() throws Exception {
         var xml = schemaXml(
             "<fieldType name='string' class='solr.StrField'/>",
-            "<field name='' type='string'/>",   // empty name — skipped
-            "<field name='id' type=''/>"         // empty type — skipped
+            "<field name='' type='string'/>",
+            "<field name='id' type=''/>"
         );
 
         var result = SolrSchemaProvider.fromXmlFile(xml);
@@ -205,18 +257,14 @@ class SolrSchemaProviderTest {
         var result = SolrSchemaProvider.fromXmlFile(xml);
 
         assertFalse(result.isEmpty());
-        org.junit.jupiter.api.Assertions.assertThrows(
+        assertThrows(
             UnsupportedOperationException.class,
-            () -> result.put("extra", "value")
+            () -> result.put("extra", Map.of("class", "solr.StrField", "multiValued", "false"))
         );
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────────
 
-    /**
-     * Write a minimal managed-schema.xml with the given fieldType and field elements
-     * and return the path.
-     */
     private Path schemaXml(String... elements) throws Exception {
         var xml = tempDir.resolve("managed-schema.xml");
         var body = String.join("\n", elements);

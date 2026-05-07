@@ -5,7 +5,7 @@ import type { RequestContext, JavaMap } from '../context';
 /** Create a mock RequestContext for testing. */
 function createMockContext(
   params: Record<string, string>,
-  fieldTypes: ReadonlyMap<string, string> = new Map(),
+  fieldTypes: ReadonlyMap<string, JavaMap> = new Map(),
 ): RequestContext {
   const body = new Map<string, any>();
   return {
@@ -78,7 +78,7 @@ describe('query-q request transform', () => {
   });
 
   it('uses term query when ctx.fieldTypes identifies field as non-text', () => {
-    const fieldTypes = new Map([['status', 'solr.StrField']]);
+    const fieldTypes = new Map([['status', new Map([['class', 'solr.StrField'], ['multiValued', 'false']])]]);
     const ctx = createMockContext({ q: 'status:active' }, fieldTypes);
     request.apply(ctx);
 
@@ -90,7 +90,7 @@ describe('query-q request transform', () => {
   });
 
   it('uses match query when ctx.fieldTypes identifies field as TextField', () => {
-    const fieldTypes = new Map([['title', 'solr.TextField']]);
+    const fieldTypes = new Map([['title', new Map([['class', 'solr.TextField'], ['multiValued', 'false']])]]);
     const ctx = createMockContext({ q: 'title:java' }, fieldTypes);
     request.apply(ctx);
 
@@ -99,7 +99,7 @@ describe('query-q request transform', () => {
   });
 
   it('uses match for unknown field even when fieldTypes is provided', () => {
-    const fieldTypes = new Map([['other_field', 'solr.StrField']]);
+    const fieldTypes = new Map([['other_field', new Map([['class', 'solr.StrField'], ['multiValued', 'false']])]]);
     const ctx = createMockContext({ q: 'title:java' }, fieldTypes);
     request.apply(ctx);
 

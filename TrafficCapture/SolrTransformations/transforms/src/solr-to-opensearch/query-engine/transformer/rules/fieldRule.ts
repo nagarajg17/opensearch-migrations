@@ -35,6 +35,7 @@
 
 import type { ASTNode, FieldNode } from '../../ast/nodes';
 import type { TransformRuleFn } from '../types';
+import type { JavaMap } from '../../../../context';
 
 /** Detects wildcard patterns: contains * or ? (but not sole *) */
 const WILDCARD_PATTERN = /[*?]/;
@@ -43,26 +44,18 @@ const WILDCARD_PATTERN = /[*?]/;
 const FUZZY_PATTERN = /^(.+?)~(\d?)$/;
 
 /** Shared empty map used as the default when no fieldTypes are provided. */
-const EMPTY_FIELD_TYPES: ReadonlyMap<string, string> = new Map();
+const EMPTY_FIELD_TYPES: ReadonlyMap<string, JavaMap> = new Map();
 
 /**
  * Classify a Solr field as analyzed text or exact based on its fieldType Java class.
- *
- * A field is analyzed (text) if its fieldType class contains "TextField"
- * (e.g. solr.TextField, org.apache.solr.schema.TextField, custom subclasses).
- * Everything else is exact — regardless of the type name.
- *
- * Using the class rather than the type name avoids false positives from
- * misleadingly-named types (e.g. a type named "text_acs" backed by IntPointField
- * is exact, not analyzed).
  */
-function isTextField(fieldTypeClass: string): boolean {
-  return fieldTypeClass.includes('TextField');
+function isTextField(metadata: JavaMap): boolean {
+  return (metadata.get('class') ?? '').includes('TextField');
 }
 
 /**
  * TransformRuleFn for FieldNode. Uses the optional `fieldTypes` parameter
- * (field name → Solr fieldType class) to choose term vs match for plain values.
+ * (field name → Solr field metadata) to choose term vs match for plain values.
  * Falls back to match when fieldTypes is absent or the field is not listed.
  */
 export const fieldRule: TransformRuleFn = (
@@ -108,8 +101,8 @@ export const fieldRule: TransformRuleFn = (
   // while term bypasses analysis entirely. For unknown fields we choose match as
   // the best-effort default since it matches Solr's query-time analysis behavior
   // for text fields, which are the most common case when schema metadata is absent.
-  const fieldTypeClass = fieldTypes.get(field);
-  if (fieldTypeClass !== undefined && !isTextField(fieldTypeClass)) {
+  const metadata = fieldTypes.get(field);
+  if (metadata !== undefined && !isTextField(metadata)) {
     // Known non-text field: term query — exact match, no analysis
     return new Map([['term', new Map([[field, new Map([['value', value]])]])]]);
   }

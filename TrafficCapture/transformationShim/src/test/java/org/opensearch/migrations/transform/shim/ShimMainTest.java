@@ -282,9 +282,11 @@ class ShimMainTest {
 
         assertTrue(bindings.containsKey("fieldTypes"));
         @SuppressWarnings("unchecked")
-        var fieldTypes = (java.util.Map<String, String>) bindings.get("fieldTypes");
-        assertEquals("solr.StrField",  fieldTypes.get("id"));
-        assertEquals("solr.TextField", fieldTypes.get("title"));
+        var fieldTypes = (java.util.Map<String, java.util.Map<String, String>>) bindings.get("fieldTypes");
+        assertEquals("solr.StrField",  fieldTypes.get("id").get("class"));
+        assertEquals("false",          fieldTypes.get("id").get("multiValued"));
+        assertEquals("solr.TextField", fieldTypes.get("title").get("class"));
+        assertEquals("false",          fieldTypes.get("title").get("multiValued"));
     }
 
     @Test

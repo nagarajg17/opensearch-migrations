@@ -27,54 +27,52 @@ describe('resolveFieldTypes', () => {
     expect(result.size).toBe(0);
   });
 
-  it('returns empty map when bindings.fieldTypes is empty object', () => {
-    const result = resolveFieldTypes({ fieldTypes: {} });
+  it('returns empty map when bindings.fieldTypes is empty Map', () => {
+    const result = resolveFieldTypes({ fieldTypes: new Map() });
     expect(result.size).toBe(0);
   });
 
-  it('converts fieldTypes object to a ReadonlyMap', () => {
-    const result = resolveFieldTypes({
-      fieldTypes: {
-        id:       'solr.StrField',
-        title:    'solr.TextField',
-        status:   'solr.StrField',
-      },
-    });
+  it('returns fieldTypes Map as-is when present', () => {
+    const inner = new Map([['class', 'solr.StrField'], ['multiValued', 'false']]);
+    const fieldTypes = new Map([
+      ['id',     new Map([['class', 'solr.StrField'],  ['multiValued', 'false']])],
+      ['title',  new Map([['class', 'solr.TextField'], ['multiValued', 'false']])],
+      ['status', inner],
+    ]);
+    const result = resolveFieldTypes({ fieldTypes });
 
     expect(result.size).toBe(3);
-    expect(result.get('id')).toBe('solr.StrField');
-    expect(result.get('title')).toBe('solr.TextField');
-    expect(result.get('status')).toBe('solr.StrField');
+    expect(result.get('id')).toBeDefined();
+    expect(result.get('title')).toBeDefined();
+    expect(result.get('status')).toBe(inner); // same reference — no copy
   });
 
-  it('returns empty map for unknown field', () => {
-    const result = resolveFieldTypes({ fieldTypes: { status: 'solr.StrField' } });
+  it('returns undefined for unknown field', () => {
+    const fieldTypes = new Map([['status', new Map([['class', 'solr.StrField'], ['multiValued', 'false']])]]);
+    const result = resolveFieldTypes({ fieldTypes });
     expect(result.get('unknown_field')).toBeUndefined();
   });
 
   it('returns the same empty map singleton when no fieldTypes (no allocation)', () => {
     const a = resolveFieldTypes(undefined);
     const b = resolveFieldTypes({});
-    // Both should be the shared EMPTY_FIELD_TYPES constant
     expect(a).toBe(b);
   });
 
   it('handles fieldTypes with TextField class correctly', () => {
-    const result = resolveFieldTypes({
-      fieldTypes: { body: 'solr.TextField' },
-    });
-    const cls = result.get('body');
-    expect(cls).toBeDefined();
-    expect(cls!.includes('TextField')).toBe(true);
+    const fieldTypes = new Map([['body', new Map([['class', 'solr.TextField'], ['multiValued', 'false']])]]);
+    const result = resolveFieldTypes({ fieldTypes });
+    const entry = result.get('body');
+    expect(entry).toBeDefined();
+    expect(entry!.get('class')!.includes('TextField')).toBe(true);
   });
 
   it('handles fieldTypes with non-text class correctly', () => {
-    const result = resolveFieldTypes({
-      fieldTypes: { price: 'solr.FloatPointField' },
-    });
-    const cls = result.get('price');
-    expect(cls).toBeDefined();
-    expect(cls!.includes('TextField')).toBe(false);
+    const fieldTypes = new Map([['price', new Map([['class', 'solr.FloatPointField'], ['multiValued', 'false']])]]);
+    const result = resolveFieldTypes({ fieldTypes });
+    const entry = result.get('price');
+    expect(entry).toBeDefined();
+    expect(entry!.get('class')!.includes('TextField')).toBe(false);
   });
 });
 

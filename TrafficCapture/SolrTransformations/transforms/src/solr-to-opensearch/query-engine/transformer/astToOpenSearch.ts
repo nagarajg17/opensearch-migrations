@@ -37,6 +37,7 @@
 
 import type { ASTNode } from '../ast/nodes';
 import type { TransformRuleFn } from './types';
+import type { JavaMap } from '../../../../context';
 import { bareRule } from './rules/bareRule';
 import { boolRule } from './rules/boolRule';
 import { fieldRule } from './rules/fieldRule';
@@ -89,7 +90,7 @@ const rules: Record<string, TransformRuleFn> = {
  */
 export function transformNode(
   node: ASTNode,
-  fieldTypes: ReadonlyMap<string, string> = new Map(),
+  fieldTypes: ReadonlyMap<string, JavaMap> = new Map(),
 ): Map<string, any> {
   // Build a transformChild closure that carries fieldTypes down the tree.
   // All composite rules (bool, boost, filter, group) call transformChild to

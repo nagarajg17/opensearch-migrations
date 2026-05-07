@@ -3,6 +3,7 @@
  */
 
 import type { ASTNode } from '../ast/nodes';
+import type { JavaMap } from '../../../../context';
 
 /**
  * A callback that recursively transforms a child AST node into
@@ -21,7 +22,8 @@ export type TransformChild = (child: ASTNode) => Map<string, any>;
  * can ignore the `transformChild` parameter. Rules for composite nodes
  * (BoolNode, GroupNode, BoostNode) use it to recurse into children.
  *
- * `fieldTypes` is optional schema metadata (field name → Solr fieldType class).
+ * `fieldTypes` is optional schema metadata (field name → Solr field metadata).
+ * Values are JavaMap — use .get('class') and .get('multiValued').
  * Currently only `fieldRule` uses it to choose `term` vs `match`. All other
  * rules can ignore it.
  *
@@ -36,5 +38,5 @@ export type TransformChild = (child: ASTNode) => Map<string, any>;
 export type TransformRuleFn = (
   node: ASTNode,
   transformChild: TransformChild,
-  fieldTypes?: ReadonlyMap<string, string>,
+  fieldTypes?: ReadonlyMap<string, JavaMap>,
 ) => Map<string, any>;

@@ -46,12 +46,14 @@ export interface RequestContext {
    */
   solrConfig?: Record<string, { defaults?: Record<string, string>; invariants?: Record<string, string>; appends?: Record<string, string> }>;
   /**
-   * Field name → Solr fieldType Java class, resolved from managed-schema.xml at shim startup.
-   * e.g. { "title": "solr.TextField", "id": "solr.StrField" }
-   * fieldRule uses class.includes("TextField") to choose match vs term.
-   * Empty map when solrSchemaXmlFile is not configured — all field:value queries use match.
+   * Field name → Solr field metadata, resolved from managed-schema.xml at shim startup.
+   * Values are GraalVM Java Maps (Map<String,String>) — use .get('class') and
+   * .get('multiValued'), not property access.
+   * fieldRule uses .get('class').includes("TextField") to choose match vs term.
+   * hits-to-docs uses .get('multiValued') to decide scalar vs array.
+   * Empty map when solrSchemaXmlFile is not configured — all fields use defaults.
    */
-  fieldTypes: ReadonlyMap<string, string>;
+  fieldTypes: ReadonlyMap<string, JavaMap>;
   /** Record a limitation metric occurrence. */
   emitMetric(metric: TransformMetricName): void;
   /** Internal accumulator — use {@link emitMetric} instead. */
@@ -71,6 +73,14 @@ export interface ResponseContext {
   targetName?: string;
   /** Routing mode — 'single' or 'dual'. Set by the shim proxy. */
   mode?: string;
+  /**
+   * Field name → Solr field metadata, resolved from managed-schema.xml at shim startup.
+   * Values are GraalVM Java Maps (Map<String,String>) — use .get('class') and
+   * .get('multiValued'), not property access.
+   * Used by hits-to-docs to decide scalar vs array for response values.
+   * Empty map when solrSchemaXmlFile is not configured — falls back to wrapping strings in arrays.
+   */
+  fieldTypes: ReadonlyMap<string, JavaMap>;
 }
 
 const ENDPOINT_PATTERNS: [RegExp, SolrEndpoint][] = [
@@ -116,7 +126,7 @@ function getBodyMap(payload: JavaMap): JavaMap {
 }
 
 /** Shared empty fieldTypes map — used as the default before request.transform.ts injects the real one. */
-const EMPTY_FIELD_TYPES: ReadonlyMap<string, string> = new Map();
+const EMPTY_FIELD_TYPES: ReadonlyMap<string, JavaMap> = new Map();
 
 export function buildRequestContext(msg: JavaMap): RequestContext {
   const uri: string = msg.get('URI') || '';
@@ -146,5 +156,6 @@ export function buildResponseContext(request: JavaMap, response: JavaMap): Respo
     responseBody: getBodyMap(response.get('payload')),
     targetName: request.get('_targetName') || 'opensearch',
     mode: request.get('_mode') || 'single',
+    fieldTypes: EMPTY_FIELD_TYPES,
   };
 }

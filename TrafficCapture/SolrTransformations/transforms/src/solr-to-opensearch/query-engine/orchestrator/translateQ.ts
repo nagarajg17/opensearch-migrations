@@ -27,6 +27,7 @@
 import { parseSolrQuery } from '../parser/parser';
 import { transformNode } from '../transformer/astToOpenSearch';
 import { applyPhraseBoost } from '../transformer/phraseBoost';
+import type { JavaMap } from '../../../../context';
 
 export interface TranslateResult {
   /**
@@ -94,7 +95,7 @@ function passthroughDsl(query: string): Map<string, any> {
 export function translateQ(
   params: ReadonlyMap<string, string>,
   mode: TranslationMode = 'fail-fast',
-  fieldTypes: ReadonlyMap<string, string> = new Map(),
+  fieldTypes: ReadonlyMap<string, JavaMap> = new Map(),
 ): TranslateResult {
   const query = params.get('q') || '*:*';
 

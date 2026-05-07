@@ -100,7 +100,7 @@ class TransformationShimE2ETest {
             var firstTc = group.get(0);
             var bindings = firstTc.transformBindings() != null ? firstTc.transformBindings() : EMPTY_BINDINGS;
             var requestTransform = composeTransforms(firstTc.requestTransforms(), bindings);
-            var responseTransform = composeTransforms(firstTc.responseTransforms());
+            var responseTransform = composeTransforms(firstTc.responseTransforms(), bindings);
             var plugins = firstTc.plugins() != null ? firstTc.plugins() : List.<String>of();
 
             try (var fixture = new ShimTestFixture(solrImage, sharedOpenSearch, requestTransform, responseTransform)) {

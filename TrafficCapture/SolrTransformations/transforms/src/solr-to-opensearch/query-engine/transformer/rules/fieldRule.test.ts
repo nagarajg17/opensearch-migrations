@@ -6,6 +6,11 @@ import type { FieldNode } from '../../ast/nodes';
 /** Stub transformChild — not used by fieldRule but required by signature. */
 const stubTransformChild = () => new Map();
 
+/** Helper: create a JavaMap-compatible field metadata map for tests. */
+function fm(cls: string, multiValued = 'false') {
+  return new Map([['class', cls], ['multiValued', multiValued]]);
+}
+
 describe('fieldRule', () => {
   // --- Plain match queries (no fieldTypes / unknown field) ---
 
@@ -27,7 +32,7 @@ describe('fieldRule', () => {
 
   it('uses match query for unknown field even when fieldTypes map is provided', () => {
     const node: FieldNode = { type: 'field', field: 'unknown_field', value: 'foo' };
-    const fieldTypes = new Map([['status', 'solr.StrField']]);
+    const fieldTypes = new Map([['status', fm('solr.StrField')]]);
 
     const result = fieldRule(node, stubTransformChild, fieldTypes);
 
@@ -39,18 +44,18 @@ describe('fieldRule', () => {
   // --- term queries when fieldTypes identifies non-text fields ---
 
   it.each([
-    { fieldTypeClass: 'solr.StrField',         desc: 'StrField (string)' },
-    { fieldTypeClass: 'solr.IntPointField',     desc: 'IntPointField (integer)' },
-    { fieldTypeClass: 'solr.LongPointField',    desc: 'LongPointField (long)' },
-    { fieldTypeClass: 'solr.FloatPointField',   desc: 'FloatPointField (float)' },
-    { fieldTypeClass: 'solr.DoublePointField',  desc: 'DoublePointField (double)' },
-    { fieldTypeClass: 'solr.DatePointField',    desc: 'DatePointField (date)' },
-    { fieldTypeClass: 'solr.BoolField',         desc: 'BoolField (boolean)' },
-    { fieldTypeClass: 'solr.UUIDField',         desc: 'UUIDField (keyword)' },
+    { fieldTypeClass: 'solr.StrField',              desc: 'StrField (string)' },
+    { fieldTypeClass: 'solr.IntPointField',          desc: 'IntPointField (integer)' },
+    { fieldTypeClass: 'solr.LongPointField',         desc: 'LongPointField (long)' },
+    { fieldTypeClass: 'solr.FloatPointField',        desc: 'FloatPointField (float)' },
+    { fieldTypeClass: 'solr.DoublePointField',       desc: 'DoublePointField (double)' },
+    { fieldTypeClass: 'solr.DatePointField',         desc: 'DatePointField (date)' },
+    { fieldTypeClass: 'solr.BoolField',              desc: 'BoolField (boolean)' },
+    { fieldTypeClass: 'solr.UUIDField',              desc: 'UUIDField (keyword)' },
     { fieldTypeClass: 'com.example.CustomExactField', desc: 'custom non-text class' },
   ])('emits term query for $desc', ({ fieldTypeClass }) => {
     const node: FieldNode = { type: 'field', field: 'status', value: 'active' };
-    const fieldTypes = new Map([['status', fieldTypeClass]]);
+    const fieldTypes = new Map([['status', fm(fieldTypeClass)]]);
 
     const result = fieldRule(node, stubTransformChild, fieldTypes);
 
@@ -62,12 +67,12 @@ describe('fieldRule', () => {
   // --- match queries when fieldTypes identifies text fields ---
 
   it.each([
-    { fieldTypeClass: 'solr.TextField',                          desc: 'solr.TextField' },
-    { fieldTypeClass: 'org.apache.solr.schema.TextField',        desc: 'fully-qualified TextField' },
-    { fieldTypeClass: 'com.example.CustomTextField',             desc: 'custom class containing TextField' },
+    { fieldTypeClass: 'solr.TextField',                   desc: 'solr.TextField' },
+    { fieldTypeClass: 'org.apache.solr.schema.TextField', desc: 'fully-qualified TextField' },
+    { fieldTypeClass: 'com.example.CustomTextField',      desc: 'custom class containing TextField' },
   ])('emits match query for $desc', ({ fieldTypeClass }) => {
     const node: FieldNode = { type: 'field', field: 'title', value: 'java' };
-    const fieldTypes = new Map([['title', fieldTypeClass]]);
+    const fieldTypes = new Map([['title', fm(fieldTypeClass)]]);
 
     const result = fieldRule(node, stubTransformChild, fieldTypes);
 
@@ -78,7 +83,7 @@ describe('fieldRule', () => {
 
   it('fieldTypes does not affect existence search — always emits exists', () => {
     const node: FieldNode = { type: 'field', field: 'status', value: '*' };
-    const fieldTypes = new Map([['status', 'solr.StrField']]);
+    const fieldTypes = new Map([['status', fm('solr.StrField')]]);
 
     const result = fieldRule(node, stubTransformChild, fieldTypes);
 
@@ -89,7 +94,7 @@ describe('fieldRule', () => {
 
   it('fieldTypes does not affect wildcard search — always emits wildcard', () => {
     const node: FieldNode = { type: 'field', field: 'status', value: 'act*' };
-    const fieldTypes = new Map([['status', 'solr.StrField']]);
+    const fieldTypes = new Map([['status', fm('solr.StrField')]]);
 
     const result = fieldRule(node, stubTransformChild, fieldTypes);
 
@@ -100,7 +105,7 @@ describe('fieldRule', () => {
 
   it('fieldTypes does not affect fuzzy search — always emits fuzzy', () => {
     const node: FieldNode = { type: 'field', field: 'status', value: 'activ~' };
-    const fieldTypes = new Map([['status', 'solr.StrField']]);
+    const fieldTypes = new Map([['status', fm('solr.StrField')]]);
 
     const result = fieldRule(node, stubTransformChild, fieldTypes);
 
@@ -200,7 +205,6 @@ describe('fieldRule', () => {
 
     const result = fieldRule(node, stubTransformChild);
 
-    // These should produce match queries, not fuzzy
     const queryType = result.keys().next().value;
     expect(queryType).not.toBe('fuzzy');
   });
@@ -211,8 +215,6 @@ describe('fieldRule', () => {
     const node: FieldNode = { type: 'field', field: 'title', value: 'test*' };
     const result = fieldRule(node, stubTransformChild);
 
-    // Verify the structure: {"wildcard": {"title": Map{...}}}
-    // The inner value must be a Map (not a string) so boostRule can inject boost
     const wildcardMap = result.get('wildcard') as Map<string, any>;
     const fieldParams = wildcardMap.get('title');
     expect(fieldParams).toBeInstanceOf(Map);
@@ -241,16 +243,16 @@ describe('fieldRule', () => {
   // --- fieldTypes propagates through bool queries ---
 
   it.each([
-    { fieldTypeClass: 'solr.StrField',         desc: 'StrField (string)' },
-    { fieldTypeClass: 'solr.IntPointField',     desc: 'IntPointField (integer)' },
-    { fieldTypeClass: 'solr.LongPointField',    desc: 'LongPointField (long)' },
-    { fieldTypeClass: 'solr.FloatPointField',   desc: 'FloatPointField (float)' },
-    { fieldTypeClass: 'solr.DoublePointField',  desc: 'DoublePointField (double)' },
-    { fieldTypeClass: 'solr.DatePointField',    desc: 'DatePointField (date)' },
-    { fieldTypeClass: 'solr.BoolField',         desc: 'BoolField (boolean)' },
-    { fieldTypeClass: 'solr.UUIDField',         desc: 'UUIDField (keyword)' },
+    { fieldTypeClass: 'solr.StrField',        desc: 'StrField (string)' },
+    { fieldTypeClass: 'solr.IntPointField',    desc: 'IntPointField (integer)' },
+    { fieldTypeClass: 'solr.LongPointField',   desc: 'LongPointField (long)' },
+    { fieldTypeClass: 'solr.FloatPointField',  desc: 'FloatPointField (float)' },
+    { fieldTypeClass: 'solr.DoublePointField', desc: 'DoublePointField (double)' },
+    { fieldTypeClass: 'solr.DatePointField',   desc: 'DatePointField (date)' },
+    { fieldTypeClass: 'solr.BoolField',        desc: 'BoolField (boolean)' },
+    { fieldTypeClass: 'solr.UUIDField',        desc: 'UUIDField (keyword)' },
   ])('term query is used for $desc field via translateQ', ({ fieldTypeClass }) => {
-    const fieldTypes = new Map([['status', fieldTypeClass]]);
+    const fieldTypes = new Map([['status', fm(fieldTypeClass)]]);
     const params = new Map([['q', 'status:active']]);
 
     const { dsl } = translateQ(params, 'fail-fast', fieldTypes);
@@ -260,8 +262,8 @@ describe('fieldRule', () => {
 
   it('term query propagates through AND bool node', () => {
     const fieldTypes = new Map([
-      ['status', 'solr.StrField'],
-      ['category', 'solr.StrField'],
+      ['status',   fm('solr.StrField')],
+      ['category', fm('solr.StrField')],
     ]);
     const params = new Map([['q', 'status:active AND category:books']]);
 
@@ -270,7 +272,7 @@ describe('fieldRule', () => {
     expect(dsl).toEqual(
       new Map([['bool', new Map([
         ['must', [
-          new Map([['term', new Map([['status', new Map([['value', 'active']])]])]]),
+          new Map([['term', new Map([['status',   new Map([['value', 'active']])]])]]),
           new Map([['term', new Map([['category', new Map([['value', 'books']])]])]]),
         ]],
       ])]]),
@@ -279,8 +281,8 @@ describe('fieldRule', () => {
 
   it('term and match queries mixed in OR bool node', () => {
     const fieldTypes = new Map([
-      ['status',   'solr.StrField'],   // exact → term
-      ['title',    'solr.TextField'],  // analyzed → match
+      ['status', fm('solr.StrField')],   // exact → term
+      ['title',  fm('solr.TextField')],  // analyzed → match
     ]);
     const params = new Map([['q', 'status:active OR title:java']]);
 

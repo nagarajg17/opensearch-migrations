@@ -13,6 +13,15 @@ import { buildResponseContext } from './context';
 import type { JavaMap } from './context';
 import { runPipeline } from './pipeline';
 import { responseRegistry } from './registry';
+import { resolveFieldTypes } from './request.transform';
+
+// Read fieldTypes from bindings once at init — same pattern as request.transform.ts.
+// The response transformer is configured with the same solrSchemaXmlFile as the
+// request transformer so both have access to field type metadata.
+declare const bindings: any;
+const fieldTypes = resolveFieldTypes(
+  typeof bindings !== 'undefined' ? bindings : undefined, //NOSONAR — typeof required for undeclared closure var
+);
 
 export function transform(msg: JavaMap): JavaMap {
   const request = msg.get('request');
@@ -21,6 +30,7 @@ export function transform(msg: JavaMap): JavaMap {
 
   const ctx = buildResponseContext(request, response);
   if (ctx.endpoint === 'unknown') return msg;
+  ctx.fieldTypes = fieldTypes;
   runPipeline(responseRegistry, ctx);
 
   let payload = response.get('payload');

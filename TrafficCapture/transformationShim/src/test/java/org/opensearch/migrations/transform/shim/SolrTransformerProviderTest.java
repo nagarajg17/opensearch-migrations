@@ -197,8 +197,8 @@ class SolrTransformerProviderTest {
         var script = "(function(bindings) { return function(msg) { " +
             "var ft = bindings.fieldTypes; " +
             "msg.set('hasFieldTypes', '' + (ft != null)); " +
-            "msg.set('idClass',    ft['id']); " +
-            "msg.set('titleClass', ft['title']); " +
+            "msg.set('idClass',    ft['id']['class']); " +
+            "msg.set('titleClass', ft['title']['class']); " +
             "return msg; }; })";
 
         var config = providerConfig(script, "{}");
@@ -231,7 +231,7 @@ class SolrTransformerProviderTest {
         // Both customKey (from bindingsObject) and fieldTypes (from schema) should be present
         var script = "(function(bindings) { return function(msg) { " +
             "msg.set('customKey',   bindings.customKey); " +
-            "msg.set('statusClass', bindings.fieldTypes['status']); " +
+            "msg.set('statusClass', bindings.fieldTypes['status']['class']); " +
             "return msg; }; })";
 
         var config = providerConfig(script, "{\"customKey\":\"myValue\"}");
@@ -273,7 +273,7 @@ class SolrTransformerProviderTest {
         var script = "(function(bindings) { return function(msg) { " +
             "msg.set('hasSolrConfig',  '' + (bindings.solrConfig != null)); " +
             "msg.set('hasFieldTypes',  '' + (bindings.fieldTypes != null)); " +
-            "msg.set('idClass',        bindings.fieldTypes['id']); " +
+            "msg.set('idClass',        bindings.fieldTypes['id']['class']); " +
             "return msg; }; })";
 
         var config = providerConfig(script, "{}");
@@ -338,12 +338,15 @@ class SolrTransformerProviderTest {
 
     @Test
     void createTransformer_inlineFieldTypesInBindings_worksWithoutSchemaFile() {
-        // Operator can provide fieldTypes directly in bindingsObject — no file needed
+        // Operator can provide fieldTypes directly in bindingsObject — no file needed.
+        // Uses the nested { class, multiValued } format matching SolrSchemaProvider output.
         var script = "(function(bindings) { return function(msg) { " +
-            "msg.set('statusClass', bindings.fieldTypes['status']); " +
+            "msg.set('statusClass', bindings.fieldTypes['status']['class']); " +
+            "msg.set('statusMultiValued', bindings.fieldTypes['status']['multiValued']); " +
             "return msg; }; })";
 
-        var bindingsJson = "{\"fieldTypes\":{\"status\":\"solr.StrField\",\"title\":\"solr.TextField\"}}";
+        var bindingsJson = "{\"fieldTypes\":{\"status\":{\"class\":\"solr.StrField\",\"multiValued\":\"false\"}," +
+            "\"title\":{\"class\":\"solr.TextField\",\"multiValued\":\"false\"}}}";
         var provider = new SolrTransformerProvider();
         var transformer = provider.createTransformer(providerConfig(script, bindingsJson));
 
@@ -353,5 +356,6 @@ class SolrTransformerProviderTest {
         var result = (Map<String, Object>) transformer.transformJson(input);
 
         assertEquals("solr.StrField", result.get("statusClass"));
+        assertEquals("false",         result.get("statusMultiValued"));
     }
 }

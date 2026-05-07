@@ -81,7 +81,7 @@ services:
       - --transformerConfig
       - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-request.js","bindingsObject":"{}","solrConfigXmlFile":"/solr-config/solrconfig.xml","solrSchemaXmlFile":"/solr-config/managed-schema.xml"}}]'
       - --responseTransformerConfig
-      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}"}}]'
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}","solrSchemaXmlFile":"/solr-config/managed-schema.xml"}}]'
       - --transformTarget
       - opensearch
       - --otelCollectorEndpoint
@@ -119,7 +119,7 @@ services:
       - --transformerConfig
       - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-request.js","bindingsObject":"{}","solrConfigXmlFile":"/solr-config/solrconfig.xml","solrSchemaXmlFile":"/solr-config/managed-schema.xml"}}]'
       - --responseTransformerConfig
-      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}"}}]'
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}","solrSchemaXmlFile":"/solr-config/managed-schema.xml"}}]'
       - --transformTarget
       - opensearch
       - --primary
@@ -167,7 +167,7 @@ services:
       - --transformerConfig
       - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-request.js","bindingsObject":"{}","solrConfigXmlFile":"/solr-config/solrconfig.xml","solrSchemaXmlFile":"/solr-config/managed-schema.xml"}}]'
       - --responseTransformerConfig
-      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}"}}]'
+      - '[{"SolrTransformerProvider":{"initializationScriptFile":"/transforms/solr-to-opensearch-response.js","bindingsObject":"{}","solrSchemaXmlFile":"/solr-config/managed-schema.xml"}}]'
       - --transformTarget
       - opensearch
       - --primary

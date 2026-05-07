@@ -48,14 +48,15 @@ function hasContent(body: any): boolean {
   return false;
 }
 
-// Read fieldTypes from bindings once at init. Java provides a flat map of
-// fieldName → solrTypeClass (e.g. {"title":"solr.TextField","id":"solr.StrField"})
+// Read fieldTypes from bindings once at init. Java provides a nested map of
+// fieldName → { class: solrTypeClass, multiValued: "true"|"false" }
 // resolved from managed-schema.xml via solrSchemaXmlFile config.
+// The inner values are GraalVM Java Maps at runtime — use .get('class') / .get('multiValued').
 // Empty map when solrSchemaXmlFile is not configured — fieldRule falls back to match.
-const EMPTY_FIELD_TYPES: ReadonlyMap<string, string> = new Map();
-export function resolveFieldTypes(bindingsObj: any): ReadonlyMap<string, string> {
+const EMPTY_FIELD_TYPES: ReadonlyMap<string, JavaMap> = new Map();
+export function resolveFieldTypes(bindingsObj: any): ReadonlyMap<string, JavaMap> {
   if (bindingsObj?.fieldTypes) {
-    return new Map(Object.entries(bindingsObj.fieldTypes as Record<string, string>));
+    return bindingsObj.fieldTypes as ReadonlyMap<string, JavaMap>;
   }
   return EMPTY_FIELD_TYPES;
 }
