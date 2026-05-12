@@ -147,6 +147,46 @@ describe('bareRule', () => {
     expect(mm.get('tie_breaker')).toBe(0.1);
   });
 
+  it('adds slop to phrase multi_match when querySlop is set', () => {
+    const node: BareNode = {
+      type: 'bare',
+      value: 'hello world',
+      isPhrase: true,
+      queryFields: ['title', 'body'],
+      querySlop: 2,
+    };
+    const result = bareRule(node, stubTransformChild);
+    const mm = result.get('multi_match') as Map<string, any>;
+    expect(mm.get('type')).toBe('phrase');
+    expect(mm.get('slop')).toBe(2);
+  });
+
+  it('does not add slop to non-phrase multi_match even when querySlop is set', () => {
+    const node: BareNode = {
+      type: 'bare',
+      value: 'java',
+      isPhrase: false,
+      queryFields: ['title', 'body'],
+      querySlop: 2,
+    };
+    const result = bareRule(node, stubTransformChild);
+    const mm = result.get('multi_match') as Map<string, any>;
+    expect(mm.get('type')).toBe('best_fields');
+    expect(mm.has('slop')).toBe(false);
+  });
+
+  it('omits slop when querySlop is not set on phrase', () => {
+    const node: BareNode = {
+      type: 'bare',
+      value: 'hello world',
+      isPhrase: true,
+      queryFields: ['title', 'body'],
+    };
+    const result = bareRule(node, stubTransformChild);
+    const mm = result.get('multi_match') as Map<string, any>;
+    expect(mm.has('slop')).toBe(false);
+  });
+
   it('falls back to query_string when queryFields is empty array', () => {
     const node: BareNode = { type: 'bare', value: 'java', isPhrase: false, queryFields: [] };
     expect(bareRule(node, stubTransformChild)).toEqual(

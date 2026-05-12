@@ -84,6 +84,42 @@ describe('applyQueryFields', () => {
     expect(node.tieBreaker).toBeUndefined();
   });
 
+  it('stamps querySlop when qs param is set', () => {
+    const node: BareNode = { type: 'bare', value: 'hello world', isPhrase: true };
+    applyQueryFields(node, p(['qf', 'title body'], ['qs', '2']));
+    expect(node.querySlop).toBe(2);
+  });
+
+  it('truncates float qs to integer — qs=2.5 becomes querySlop=2', () => {
+    const node: BareNode = { type: 'bare', value: 'hello world', isPhrase: true };
+    applyQueryFields(node, p(['qf', 'title body'], ['qs', '2.5']));
+    expect(node.querySlop).toBe(2);
+  });
+
+  it('does not stamp querySlop when qs is absent', () => {
+    const node: BareNode = { type: 'bare', value: 'hello world', isPhrase: true };
+    applyQueryFields(node, p(['qf', 'title body']));
+    expect(node.querySlop).toBeUndefined();
+  });
+
+  it('does not stamp querySlop when qs=0', () => {
+    const node: BareNode = { type: 'bare', value: 'hello world', isPhrase: true };
+    applyQueryFields(node, p(['qf', 'title body'], ['qs', '0']));
+    expect(node.querySlop).toBeUndefined();
+  });
+
+  it('does not stamp querySlop when qs is NaN', () => {
+    const node: BareNode = { type: 'bare', value: 'hello world', isPhrase: true };
+    applyQueryFields(node, p(['qf', 'title body'], ['qs', 'abc']));
+    expect(node.querySlop).toBeUndefined();
+  });
+
+  it('stamps querySlop on non-phrase BareNode too (bareRule decides when to use it)', () => {
+    const node: BareNode = { type: 'bare', value: 'java', isPhrase: false };
+    applyQueryFields(node, p(['qf', 'title body'], ['qs', '3']));
+    expect(node.querySlop).toBe(3);
+  });
+
   it('does nothing when qf is absent', () => {
     const node: BareNode = { type: 'bare', value: 'java', isPhrase: false };
     applyQueryFields(node, p());

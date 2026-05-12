@@ -51,7 +51,7 @@ export const bareRule: TransformRuleFn = (
   // Bare is a leaf node — transformChild not used
   _transformChild,
 ): Map<string, any> => {
-  const { value, isPhrase, defaultField, queryFields, tieBreaker } = node;
+  const { value, isPhrase, defaultField, queryFields, tieBreaker, querySlop } = node;
 
   // multi_match path: qf fields provided (edismax/dismax)
   if (queryFields && queryFields.length > 0) {
@@ -61,6 +61,9 @@ export const bareRule: TransformRuleFn = (
       ['type', isPhrase ? 'phrase' : 'best_fields'],
     ];
     if (tieBreaker !== undefined) entries.push(['tie_breaker', tieBreaker]);
+    // qs (query slop) applies only to phrase queries — allows terms to be
+    // up to querySlop positions apart and still match as a phrase
+    if (isPhrase && querySlop !== undefined) entries.push(['slop', querySlop]);
     return new Map([['multi_match', new Map<string, any>(entries)]]);
   }
 

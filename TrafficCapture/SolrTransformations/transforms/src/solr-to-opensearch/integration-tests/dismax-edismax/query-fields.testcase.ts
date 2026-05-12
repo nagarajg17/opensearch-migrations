@@ -22,11 +22,14 @@ const twoFieldMapping = {
   },
 };
 
-function qfPath(q: string, defType: string, qf: string): string {
-  return '/solr/testcollection/select?q=' + encodeURIComponent(q)
+function qfPath(q: string, defType: string, qf: string, extra: Record<string, string> = {}): string {
+  const base = '/solr/testcollection/select?q=' + encodeURIComponent(q)
     + '&defType=' + defType
-    + '&qf=' + encodeURIComponent(qf)
-    + '&wt=json';
+    + '&qf=' + encodeURIComponent(qf);
+  const rest = Object.entries(extra)
+    .map(([k, v]) => `&${k}=${encodeURIComponent(v)}`)
+    .join('');
+  return base + rest + '&wt=json';
 }
 
 function makeQfCases(defType: 'edismax' | 'dismax'): TestCase[] {
@@ -85,6 +88,45 @@ function makeQfCases(defType: 'edismax' | 'dismax'): TestCase[] {
         { id: '3', title: 'unrelated', body: 'hello world message' },
       ],
       requestPath: qfPath('"hello world"', defType, 'title body'),
+      solrSchema: twoFieldSchema,
+      opensearchMapping: twoFieldMapping,
+    }),
+
+    // ─── qs (query slop) ────────────────────────────────────────────────────
+
+    solrTest(`${defType}-phrase-qs-allows-gap`, {
+      description: 'qs=2 allows up to 2 words between phrase terms and still matches',
+      documents: [
+        { id: '1', title: 'hello world', body: 'unrelated' },
+        { id: '2', title: 'hello beautiful world', body: 'unrelated' },
+        { id: '3', title: 'hello very beautiful world', body: 'unrelated' },
+        { id: '4', title: 'unrelated content', body: 'unrelated' },
+      ],
+      requestPath: qfPath('"hello world"', defType, 'title body', { qs: '2' }),
+      solrSchema: twoFieldSchema,
+      opensearchMapping: twoFieldMapping,
+    }),
+
+    solrTest(`${defType}-phrase-qs0-strict-adjacency`, {
+      description: 'qs=0 (default) requires exact adjacent phrase — gap prevents match',
+      documents: [
+        { id: '1', title: 'hello world', body: 'unrelated' },
+        { id: '2', title: 'hello beautiful world', body: 'unrelated' },
+        { id: '3', title: 'unrelated content', body: 'unrelated' },
+      ],
+      requestPath: qfPath('"hello world"', defType, 'title body', { qs: '0' }),
+      solrSchema: twoFieldSchema,
+      opensearchMapping: twoFieldMapping,
+    }),
+
+    solrTest(`${defType}-phrase-qs-multi-field`, {
+      description: 'qs applies across all qf fields — slop on both title and body phrase queries',
+      documents: [
+        { id: '1', title: 'hello beautiful world', body: 'unrelated' },
+        { id: '2', title: 'unrelated', body: 'hello great world message' },
+        { id: '3', title: 'unrelated', body: 'unrelated' },
+      ],
+      requestPath: qfPath('"hello world"', defType, 'title body', { qs: '2' }),
       solrSchema: twoFieldSchema,
       opensearchMapping: twoFieldMapping,
     }),

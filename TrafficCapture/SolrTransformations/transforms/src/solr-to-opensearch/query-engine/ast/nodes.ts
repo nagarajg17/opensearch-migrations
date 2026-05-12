@@ -100,6 +100,13 @@ export interface BareNode {
    * 0.0 (default) = pure disjunction max, 1.0 = sum of all fields.
    */
   tieBreaker?: number;
+  /**
+   * Query phrase slop from the `qs` parameter (edismax/dismax).
+   * Applies slop to explicit phrase queries the user types in q (isPhrase=true).
+   * Allows terms in the phrase to be up to qs positions apart and still match.
+   * Only meaningful when queryFields is set and isPhrase is true.
+   */
+  querySlop?: number;
 }
 
 /**

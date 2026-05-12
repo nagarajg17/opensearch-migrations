@@ -58,34 +58,40 @@ export function applyQueryFields(node: ASTNode, params: ReadonlyMap<string, stri
   const tieBreaker = tieRaw !== undefined ? Number.parseFloat(tieRaw) : undefined;
   const validTie = tieBreaker !== undefined && !Number.isNaN(tieBreaker) ? tieBreaker : undefined;
 
-  _applyQueryFields(node, queryFields, validTie);
+  const qsRaw = params.get('qs');
+  const querySlop = qsRaw !== undefined ? Number.parseInt(qsRaw, 10) : undefined;
+  const validQs = querySlop !== undefined && !Number.isNaN(querySlop) && querySlop > 0 ? querySlop : undefined;
+
+  _applyQueryFields(node, queryFields, validTie, validQs);
 }
 
-function _applyQueryFields(node: ASTNode, queryFields: string[], tieBreaker: number | undefined): void {
+function _applyQueryFields(node: ASTNode, queryFields: string[], tieBreaker: number | undefined, querySlop: number | undefined): void {
   switch (node.type) {
     case 'bare':
       node.queryFields = queryFields;
       if (tieBreaker !== undefined) node.tieBreaker = tieBreaker;
+      if (querySlop !== undefined) node.querySlop = querySlop;
       // Clear defaultField — queryFields takes precedence and bareRule uses queryFields first
       delete node.defaultField;
       break;
     case 'bool':
-      node.and.forEach((child) => _applyQueryFields(child, queryFields, tieBreaker));
-      node.or.forEach((child) => _applyQueryFields(child, queryFields, tieBreaker));
-      node.not.forEach((child) => _applyQueryFields(child, queryFields, tieBreaker));
+      node.and.forEach((child) => _applyQueryFields(child, queryFields, tieBreaker, querySlop));
+      node.or.forEach((child) => _applyQueryFields(child, queryFields, tieBreaker, querySlop));
+      node.not.forEach((child) => _applyQueryFields(child, queryFields, tieBreaker, querySlop));
       break;
     case 'boost':
     case 'group':
     case 'filter':
-      _applyQueryFields(node.child, queryFields, tieBreaker);
+      _applyQueryFields(node.child, queryFields, tieBreaker, querySlop);
       break;
     case 'localParams':
-      if (node.body) _applyQueryFields(node.body, queryFields, tieBreaker);
+      if (node.body) _applyQueryFields(node.body, queryFields, tieBreaker, querySlop);
       break;
     case 'field':
     case 'phrase':
     case 'range':
     case 'matchAll':
+    case 'func':
       break;
     /* v8 ignore next 3 */
     default: {

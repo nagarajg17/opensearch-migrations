@@ -173,7 +173,7 @@ function makeSharedCases(defType: 'edismax' | 'dismax'): TestCase[] {
       opensearchMapping: twoFieldMapping,
     }),
 
-    // ─── combined pf + ps + tie ─────────────────────────────────────────────
+    // ─── combined pf + ps + tie + qs ────────────────────────────────────────
 
     solrTest(`${defType}-pf-ps-tie-combined`, {
       description: 'pf, ps, and tie all set together — full dismax/edismax scoring',
@@ -187,6 +187,27 @@ function makeSharedCases(defType: 'edismax' | 'dismax'): TestCase[] {
       ],
       requestPath: p('java programming', defType, {
         qf: 'title^2 body',
+        pf: 'title^50 body^20',
+        ps: '2',
+        tie: '0.3',
+      }),
+      solrSchema: twoFieldSchema,
+      opensearchMapping: twoFieldMapping,
+    }),
+
+    solrTest(`${defType}-pf-ps-tie-qs-combined`, {
+      description: 'pf, ps, tie, and qs all set — user phrase query with slop, phrase boost, and tie breaker',
+      documents: [
+        { id: '1', title: 'java programming tutorial', body: 'java tutorial' },
+        { id: '2', title: 'java advanced programming', body: 'java tutorial' },
+        { id: '3', title: 'java programming', body: 'unrelated content' },
+        { id: '4', title: 'unrelated content', body: 'java programming guide' },
+        { id: '5', title: 'java tutorial', body: 'programming reference' },
+        { id: '6', title: 'programming basics', body: 'java fundamentals' },
+      ],
+      requestPath: p('"java programming"', defType, {
+        qf: 'title^2 body',
+        qs: '2',
         pf: 'title^50 body^20',
         ps: '2',
         tie: '0.3',
