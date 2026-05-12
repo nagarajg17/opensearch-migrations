@@ -606,3 +606,170 @@ describe('parseSolrQuery – BoolNode with groups (precedence via AST nesting)',
     });
   });
 });
+
+describe('parseSolrQuery – lowercaseOperators', () => {
+  const lco = new Map([['lowercaseOperators', 'true']]);
+
+  it('treats lowercase "and" as AND when lowercaseOperators=true', () => {
+    const { ast, errors } = parseSolrQuery('title:java and author:smith', lco);
+    expect(errors).toEqual([]);
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [
+        { type: 'field', field: 'title', value: 'java' },
+        { type: 'field', field: 'author', value: 'smith' },
+      ],
+      or: [],
+      not: [],
+    });
+  });
+
+  it('treats lowercase "or" as OR when lowercaseOperators=true', () => {
+    const { ast, errors } = parseSolrQuery('title:java or title:python', lco);
+    expect(errors).toEqual([]);
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        { type: 'field', field: 'title', value: 'java' },
+        { type: 'field', field: 'title', value: 'python' },
+      ],
+      not: [],
+    });
+  });
+
+  it('treats lowercase "not" as NOT when lowercaseOperators=true', () => {
+    const { ast, errors } = parseSolrQuery('title:java not status:draft', lco);
+    expect(errors).toEqual([]);
+    // 'not status:draft' becomes a NOT clause; 'title:java' and 'NOT status:draft'
+    // are joined by implicit OR (no explicit AND between them)
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        { type: 'field', field: 'title', value: 'java' },
+        {
+          type: 'bool',
+          and: [],
+          or: [],
+          not: [{ type: 'field', field: 'status', value: 'draft' }],
+        },
+      ],
+      not: [],
+    });
+  });
+
+  it('does not treat lowercase "and" as operator when lowercaseOperators is absent (default)', () => {
+    const { ast, errors } = parseSolrQuery('title:java and author:smith', emptyParams);
+    expect(errors).toEqual([]);
+    // 'and' is treated as a bare term, not an operator — implicit OR of 3 terms
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        { type: 'field', field: 'title', value: 'java' },
+        { type: 'bare', value: 'and', isPhrase: false },
+        { type: 'field', field: 'author', value: 'smith' },
+      ],
+      not: [],
+    });
+  });
+
+  it('does not affect word containing "and" as substring', () => {
+    const { ast, errors } = parseSolrQuery('android and java', lco);
+    expect(errors).toEqual([]);
+    // 'android' must not become 'ANDroid'
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [
+        { type: 'bare', value: 'android', isPhrase: false },
+        { type: 'bare', value: 'java', isPhrase: false },
+      ],
+      or: [],
+      not: [],
+    });
+  });
+
+  it('handles mixed case — lowercase "and" with uppercase OR', () => {
+    const { ast, errors } = parseSolrQuery('title:java and author:smith OR status:active', lco);
+    expect(errors).toEqual([]);
+    // 'and' normalized to AND, so: (title:java AND author:smith) OR status:active
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        {
+          type: 'bool',
+          and: [
+            { type: 'field', field: 'title', value: 'java' },
+            { type: 'field', field: 'author', value: 'smith' },
+          ],
+          or: [],
+          not: [],
+        },
+        { type: 'field', field: 'status', value: 'active' },
+      ],
+      not: [],
+    });
+  });
+
+  it('handles all three lowercase operators together', () => {
+    const { ast, errors } = parseSolrQuery('title:java and author:smith or not status:draft', lco);
+    expect(errors).toEqual([]);
+    // (title:java AND author:smith) OR (NOT status:draft)
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        {
+          type: 'bool',
+          and: [
+            { type: 'field', field: 'title', value: 'java' },
+            { type: 'field', field: 'author', value: 'smith' },
+          ],
+          or: [],
+          not: [],
+        },
+        {
+          type: 'bool',
+          and: [],
+          or: [],
+          not: [{ type: 'field', field: 'status', value: 'draft' }],
+        },
+      ],
+      not: [],
+    });
+  });
+
+  it('mixes uppercase AND and lowercase and in the same query', () => {
+    // Query uses both AND and and — both should produce the same AND operator
+    const { ast, errors } = parseSolrQuery('title:java AND author:smith and status:active', lco);
+    expect(errors).toEqual([]);
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [
+        { type: 'field', field: 'title', value: 'java' },
+        { type: 'field', field: 'author', value: 'smith' },
+        { type: 'field', field: 'status', value: 'active' },
+      ],
+      or: [],
+      not: [],
+    });
+  });
+
+  it('mixes uppercase OR and lowercase or in the same query', () => {
+    // Query uses both OR and or — both should produce the same OR operator
+    const { ast, errors } = parseSolrQuery('title:java OR title:python or title:ruby', lco);
+    expect(errors).toEqual([]);
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        { type: 'field', field: 'title', value: 'java' },
+        { type: 'field', field: 'title', value: 'python' },
+        { type: 'field', field: 'title', value: 'ruby' },
+      ],
+      not: [],
+    });
+  });
+});

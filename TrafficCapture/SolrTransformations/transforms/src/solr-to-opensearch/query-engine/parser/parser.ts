@@ -96,8 +96,18 @@ export function parseSolrQuery(
   // defType selects edismax/dismax semantics for the qf pass.
   const defType = params.get('defType')?.toLowerCase();
 
+  // lowercaseOperators: when true, treat lowercase 'and', 'or', 'not' as
+  // boolean operators. Only meaningful for edismax. Defaults to false.
+  // Implemented as a pre-parse normalization — uppercase the operator keywords
+  // before feeding to the PEG parser, which only recognizes uppercase operators.
+  // Word boundaries prevent false matches (e.g., 'android' → 'ANDroid').
+  const lowercaseOperators = params.get('lowercaseOperators') === 'true';
+  const normalizedQuery = lowercaseOperators
+    ? query.replace(/\b(and|or|not)\b/g, (m) => m.toUpperCase())
+    : query;
+
   try {
-    const ast = getParser().parse(query) as ASTNode;
+    const ast = getParser().parse(normalizedQuery) as ASTNode;
 
     // Phase 2: If the grammar produced a LocalParamsNode, re-parse the body
     // based on the query parser type. The grammar captures the body as raw
