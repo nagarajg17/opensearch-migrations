@@ -101,7 +101,9 @@ export function parseSolrQuery(
   // Implemented as a pre-parse normalization — uppercase the operator keywords
   // before feeding to the PEG parser, which only recognizes uppercase operators.
   // Word boundaries prevent false matches (e.g., 'android' → 'ANDroid').
-  const lowercaseOperators = params.get('lowercaseOperators') === 'true';
+  // Gated on defType=edismax to match Solr behavior — the standard (lucene) parser
+  // ignores this parameter entirely.
+  const lowercaseOperators = defType === 'edismax' && params.get('lowercaseOperators') === 'true';
   const normalizedQuery = lowercaseOperators
     ? query.replace(/\b(and|or|not)\b/g, (m) => m.toUpperCase())
     : query;

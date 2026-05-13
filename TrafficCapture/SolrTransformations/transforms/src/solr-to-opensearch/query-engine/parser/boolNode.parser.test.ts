@@ -608,7 +608,7 @@ describe('parseSolrQuery – BoolNode with groups (precedence via AST nesting)',
 });
 
 describe('parseSolrQuery – lowercaseOperators', () => {
-  const lco = new Map([['lowercaseOperators', 'true']]);
+  const lco = new Map([['lowercaseOperators', 'true'], ['defType', 'edismax']]);
 
   it('treats lowercase "and" as AND when lowercaseOperators=true', () => {
     const { ast, errors } = parseSolrQuery('title:java and author:smith', lco);
@@ -663,6 +663,24 @@ describe('parseSolrQuery – lowercaseOperators', () => {
     const { ast, errors } = parseSolrQuery('title:java and author:smith', emptyParams);
     expect(errors).toEqual([]);
     // 'and' is treated as a bare term, not an operator — implicit OR of 3 terms
+    expect(ast).toEqual({
+      type: 'bool',
+      and: [],
+      or: [
+        { type: 'field', field: 'title', value: 'java' },
+        { type: 'bare', value: 'and', isPhrase: false },
+        { type: 'field', field: 'author', value: 'smith' },
+      ],
+      not: [],
+    });
+  });
+
+  it('ignores lowercaseOperators=true when defType is not edismax (standard parser)', () => {
+    // Solr's standard (lucene) parser ignores lowercaseOperators — our shim should too
+    const params = new Map([['lowercaseOperators', 'true']]); // no defType
+    const { ast, errors } = parseSolrQuery('title:java and author:smith', params);
+    expect(errors).toEqual([]);
+    // 'and' still treated as bare term — lowercaseOperators only applies to edismax
     expect(ast).toEqual({
       type: 'bool',
       and: [],
