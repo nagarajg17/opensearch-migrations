@@ -201,6 +201,128 @@ function convertCompoundDateGap(gap: string): DateGapInterval {
 
 // endregion
 
+// region Solr date math bound conversion
+
+/**
+ * Full Solr date-math unit → OpenSearch suffix map for range bound expressions.
+ *
+ * Extends the gap map with units that are valid in date math bounds but not
+ * used in histogram gaps:
+ *   DATE         — Solr alias for DAY → 'd'
+ *   MILLI/MILLIS/MILLISECOND/MILLISECONDS → 'ms'
+ *
+ * Source: https://solr.apache.org/guide/solr/latest/indexing-guide/date-formatting-math.html
+ */
+const BOUND_UNIT_TO_OS: Record<string, string> = {
+  ...SOLR_UNIT_TO_OS,
+  DATE:         'd',   // Solr alias for DAY
+  MILLI:        'ms',
+  MILLIS:       'ms',
+  MILLISECOND:  'ms',
+  MILLISECONDS: 'ms',
+};
+
+/**
+ * Regex for detecting date-math operators in range bound expressions.
+ *
+ * NOT global — avoids the lastIndex state bug that affects `.test()` with
+ * module-level global regex constants.
+ *
+ * Matches segments like "+1DAY", "-7MONTHS", "/HOUR", "+500MILLIS", "/DATE".
+ * Longer aliases listed first to prevent partial matching (e.g. MILLISECONDS
+ * before MILLIS before MILLI).
+ */
+const SOLR_DATE_MATH_BOUND_RE =
+  /[-+/]\d*(MILLISECONDS|MILLISECOND|MILLIS|MILLI|YEARS?|MONTHS?|DAYS?|DATE|HOURS?|MINUTES?|SECONDS?)/i;
+
+/**
+ * Return `true` when `bound` contains Solr date-math syntax.
+ *
+ * Recognises:
+ *   - `NOW` (bare, with or without trailing operators)
+ *   - ISO date strings with date-math suffixes: `2024-01-01T00:00:00Z+1MONTH`
+ */
+export function isSolrDateMathBound(bound: string): boolean {
+  if (bound === '*') return false;
+  return /^NOW\b/i.test(bound) || SOLR_DATE_MATH_BOUND_RE.test(bound);
+}
+
+/**
+ * Convert a Solr date-math bound expression to its OpenSearch equivalent.
+ *
+ * Full unit support per the Solr spec:
+ *   YEAR/YEARS, MONTH/MONTHS, DAY/DAYS, DATE (=DAY),
+ *   HOUR/HOURS, MINUTE/MINUTES, SECOND/SECONDS,
+ *   MILLI/MILLIS/MILLISECOND/MILLISECONDS
+ *
+ * Translation rules:
+ *   NOW                          → now
+ *   NOW/DAY                      → now/d
+ *   NOW-7DAYS                    → now-7d
+ *   NOW+1MONTH/DAY               → now+1M/d
+ *   NOW+500MILLIS                → now+500ms
+ *   NOW-1DATE                    → now-1d           (DATE alias)
+ *   NOW+6MONTHS+3DAYS/DAY        → now+6M+3d/d
+ *   2024-01-01T00:00:00Z         → passed through unchanged (plain ISO)
+ *   2024-01-01T00:00:00Z+1MONTH  → 2024-01-01T00:00:00Z||+1M
+ *   1972-05-20T17:33:18.772Z+6MONTHS+3DAYS/DAY → 1972-05-20T17:33:18.772Z||+6M+3d/d
+ *
+ * OpenSearch anchored date math requires `||` to separate an ISO anchor from
+ * the math operators. NOW-based expressions attach operators directly.
+ *
+ * @throws Error if a unit in the expression is not recognised.
+ */
+export function convertSolrDateMathBound(bound: string): string {
+  if (bound === '*') return bound;
+
+  // Fast path: plain ISO date string with no date-math — pass through as-is
+  if (/^\d{4}-\d{2}-\d{2}(T[\d:Z.+-]+)?$/.test(bound)) {
+    return bound;
+  }
+
+  const nowMatch = /^NOW\b/i.exec(bound);
+  const isoAnchorMatch = /^(\d{4}-\d{2}-\d{2}(?:T[^+\-/]*)?)([+\-/].+)$/.exec(bound);
+
+  let anchor: string;
+  let mathTail: string;
+
+  if (nowMatch) {
+    anchor = 'now';
+    mathTail = bound.slice(nowMatch[0].length);
+  } else if (isoAnchorMatch) {
+    anchor = isoAnchorMatch[1];   // e.g. "2024-01-01T00:00:00Z"
+    mathTail = isoAnchorMatch[2]; // e.g. "+1MONTH"
+  } else {
+    // Plain non-date-math value (numeric, string keyword) — return unchanged
+    return bound;
+  }
+
+  if (!mathTail) {
+    // Bare NOW with no operators
+    return anchor;
+  }
+
+  // Translate each operator segment in the tail.
+  // Longer unit names listed first to prevent partial matching.
+  const translatedTail = mathTail.replace(
+    /([-+/])(\d+)?(MILLISECONDS|MILLISECOND|MILLIS|MILLI|YEARS?|MONTHS?|DAYS?|DATE|HOURS?|MINUTES?|SECONDS?)/gi,
+    (_match, op: string, countStr: string | undefined, unit: string) => {
+      const osUnit = BOUND_UNIT_TO_OS[unit.toUpperCase()];
+      if (!osUnit) {
+        throw new Error(`Unknown Solr date unit in bound expression: "${unit}"`);
+      }
+      // Rounding has no count: /DAY → /d; arithmetic has count: +7DAYS → +7d
+      return countStr !== undefined ? `${op}${countStr}${osUnit}` : `${op}${osUnit}`;
+    },
+  );
+
+  // NOW-based: math operators attach directly (e.g. now-7d/d)
+  // ISO-anchored: OpenSearch requires || separator (e.g. 2024-01-01T00:00:00Z||+1M)
+  return nowMatch ? `${anchor}${translatedTail}` : `${anchor}||${translatedTail}`;
+}
+
+// endregion
+
 const SORT_KEY_MAP: Record<string, string> = {
   count: '_count',
   index: '_key',

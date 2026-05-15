@@ -277,10 +277,16 @@ bareValue
 
 // ─── Terminals ───────────────────────────────────────────────────────────────
 
-// Range bound value: alphanumeric string or * (for unbounded ranges like [* TO 100]).
+// Range bound value: alphanumeric string, * (for unbounded ranges), or a date/date-math
+// expression.
+//
+// Extended character set vs. the old rule:
+//   :   — required for ISO timestamps (e.g. 2024-01-15T00:00:00Z)
+//   +   — required for Solr date-math arithmetic (e.g. NOW+1DAY, 2024-01-01T00:00:00Z+1MONTH)
+//   /   — required for Solr date-math rounding (e.g. NOW/DAY, NOW-7DAYS/DAY)
 rangeVal
   = "*" { return '*'; }
-  / $[a-zA-Z0-9._\-]+
+  / $[a-zA-Z0-9._\-:+/]+
 
 // Unquoted value characters: letters, digits, and common special chars.
 // Determines what can appear in unquoted field values.

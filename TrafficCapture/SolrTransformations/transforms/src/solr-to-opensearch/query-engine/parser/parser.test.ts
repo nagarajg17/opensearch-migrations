@@ -128,6 +128,89 @@ describe('parseSolrQuery', () => {
         lowerInclusive: true, upperInclusive: true,
       });
     });
+
+    // ── Date bounds (rangeVal extended with : / +) ────────────────────────
+
+    it('parses ISO timestamp bounds', () => {
+      const { ast, errors } = parseSolrQuery(
+        'event_date:[2024-01-01T00:00:00Z TO 2024-12-31T23:59:59Z]',
+        emptyParams,
+      );
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: '2024-01-01T00:00:00Z',
+        upper: '2024-12-31T23:59:59Z',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
+
+    it('parses ISO timestamp with milliseconds', () => {
+      const { ast, errors } = parseSolrQuery(
+        'event_date:[1972-05-20T17:33:18.772Z TO *]',
+        emptyParams,
+      );
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: '1972-05-20T17:33:18.772Z',
+        upper: '*',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
+
+    it('parses bare NOW as range bound', () => {
+      const { ast, errors } = parseSolrQuery('event_date:[NOW TO *]', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: 'NOW', upper: '*',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
+
+    it('parses NOW with arithmetic operator as range bound', () => {
+      const { ast, errors } = parseSolrQuery('event_date:[NOW-7DAYS TO NOW]', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: 'NOW-7DAYS', upper: 'NOW',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
+
+    it('parses NOW with rounding operator as range bound', () => {
+      const { ast, errors } = parseSolrQuery('event_date:[NOW/DAY TO NOW+1DAY/DAY]', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: 'NOW/DAY', upper: 'NOW+1DAY/DAY',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
+
+    it('parses compound NOW date math as range bound', () => {
+      const { ast, errors } = parseSolrQuery('event_date:[NOW+6MONTHS+3DAYS/DAY TO *]', emptyParams);
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: 'NOW+6MONTHS+3DAYS/DAY', upper: '*',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
+
+    it('parses ISO anchor with date math suffix as range bound', () => {
+      const { ast, errors } = parseSolrQuery(
+        'event_date:[1972-05-20T17:33:18.772Z+6MONTHS+3DAYS/DAY TO *]',
+        emptyParams,
+      );
+      expect(errors).toEqual([]);
+      expect(ast).toEqual({
+        type: 'range', field: 'event_date',
+        lower: '1972-05-20T17:33:18.772Z+6MONTHS+3DAYS/DAY', upper: '*',
+        lowerInclusive: true, upperInclusive: true,
+      });
+    });
   });
 
   // ─── BoolNode ────────────────────────────────────────────────────────────
